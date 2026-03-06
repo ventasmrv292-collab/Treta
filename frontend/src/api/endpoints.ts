@@ -1,3 +1,4 @@
+import { API_BASE } from '../config'
 import type {
   Trade,
   TradeListResponse,
@@ -8,6 +9,8 @@ import type {
   TradeClosePayload,
   BacktestRun,
 } from '../types'
+
+const API_V1 = `${API_BASE}/api/v1`
 
 const qs = (params: Record<string, string | number | boolean | undefined>) => {
   const s = new URLSearchParams()
@@ -65,43 +68,37 @@ export const endpoints = {
 }
 
 export async function fetchPrice(symbol: string) {
-  const base = '/api/v1'
-  const res = await fetch(`${base}${endpoints.market.price(symbol)}`)
+  const res = await fetch(`${API_V1}${endpoints.market.price(symbol)}`)
   if (!res.ok) throw new Error('Failed to fetch price')
   return res.json() as Promise<{ symbol: string; price: string }>
 }
 
 export async function fetchKlines(symbol: string, interval: string, limit = 300) {
-  const base = '/api/v1'
-  const res = await fetch(`${base}${endpoints.market.klines(symbol, interval, limit)}`)
+  const res = await fetch(`${API_V1}${endpoints.market.klines(symbol, interval, limit)}`)
   if (!res.ok) throw new Error('Failed to fetch klines')
   return res.json() as Promise<KlinesResponse>
 }
 
 export async function fetchTrades(params: Parameters<typeof endpoints.trades.list>[0]) {
-  const base = '/api/v1'
-  const res = await fetch(`${base}${endpoints.trades.list(params)}`)
+  const res = await fetch(`${API_V1}${endpoints.trades.list(params)}`)
   if (!res.ok) throw new Error('Failed to fetch trades')
   return res.json() as Promise<TradeListResponse>
 }
 
 export async function fetchDashboard() {
-  const base = '/api/v1'
-  const res = await fetch(`${base}${endpoints.analytics.dashboard()}`)
+  const res = await fetch(`${API_V1}${endpoints.analytics.dashboard()}`)
   if (!res.ok) throw new Error('Failed to fetch dashboard')
   return res.json() as Promise<DashboardMetrics>
 }
 
 export async function fetchStrategies() {
-  const base = '/api/v1'
-  const res = await fetch(`${base}${endpoints.strategies.list()}`)
+  const res = await fetch(`${API_V1}${endpoints.strategies.list()}`)
   if (!res.ok) throw new Error('Failed to fetch strategies')
   return res.json() as Promise<Strategy[]>
 }
 
 export async function createTrade(payload: ManualTradeCreate) {
-  const base = '/api/v1'
-  const res = await fetch(`${base}${endpoints.trades.create()}`, {
+  const res = await fetch(`${API_V1}${endpoints.trades.create()}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
@@ -114,8 +111,7 @@ export async function createTrade(payload: ManualTradeCreate) {
 }
 
 export async function closeTrade(id: number, payload: TradeClosePayload) {
-  const base = '/api/v1'
-  const res = await fetch(`${base}${endpoints.trades.close(id)}`, {
+  const res = await fetch(`${API_V1}${endpoints.trades.close(id)}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
@@ -140,8 +136,7 @@ export async function runBacktest(payload: {
   fee_profile?: string
   slippage_bps?: number
 }) {
-  const base = '/api/v1'
-  const res = await fetch(`${base}${endpoints.backtest.run()}`, {
+  const res = await fetch(`${API_V1}${endpoints.backtest.run()}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),

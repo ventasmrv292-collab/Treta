@@ -1,4 +1,6 @@
-const BASE = '/api/v1'
+import { API_BASE } from '../config'
+
+const BASE = `${API_BASE}/api/v1`
 
 async function request<T>(
   path: string,
