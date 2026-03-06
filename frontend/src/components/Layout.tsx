@@ -39,7 +39,7 @@ export function Layout() {
         )}
       >
         <div className="flex h-14 items-center justify-between border-b border-white/10 px-4">
-          <span className="font-semibold text-[var(--accent)]">Crypto Sim</span>
+          <span className="font-semibold text-[var(--accent)]">TRETA</span>
           <button
             type="button"
             onClick={() => setSidebarOpen(false)}

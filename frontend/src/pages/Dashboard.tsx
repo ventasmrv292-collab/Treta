@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { CandlestickChart } from '../components/CandlestickChart'
-import { fetchKlines, fetchPrice, fetchDashboard, fetchPaperAccounts, fetchDashboardSummary } from '../api/endpoints'
+import { fetchKlines, fetchPrice, fetchDashboard, fetchPaperAccounts, fetchDashboardSummary, fetchTrades } from '../api/endpoints'
 import { WS_BASE } from '../config'
-import type { CandleData, PaperAccount } from '../types'
-import { TrendingUp, Activity, DollarSign, Percent, Wallet } from 'lucide-react'
+import type { CandleData, PaperAccount, Trade } from '../types'
+import { format } from 'date-fns'
+import { TrendingUp, Activity, DollarSign, Percent, Wallet, History, ArrowRight } from 'lucide-react'
 
 const TIMEFRAMES = ['1m', '5m', '15m', '1h'] as const
 
@@ -43,6 +45,7 @@ export function Dashboard() {
     total_fees_usdt: string
     equity_usdt: string | null
   } | null>(null)
+  const [recentTrades, setRecentTrades] = useState<Trade[]>([])
 
   // Carga inicial: klines, precio, cuentas paper y dashboard (o summary con cuenta)
   useEffect(() => {
@@ -157,6 +160,21 @@ export function Dashboard() {
     }, CHART_REFRESH_MS)
     return () => clearInterval(t)
   }, [interval])
+
+  // Historial reciente (parte inferior del dashboard)
+  useEffect(() => {
+    fetchTrades({ page: 1, size: 10 })
+      .then((r) => setRecentTrades(r.items))
+      .catch(() => setRecentTrades([]))
+  }, [])
+  useEffect(() => {
+    const t = setInterval(() => {
+      fetchTrades({ page: 1, size: 10 })
+        .then((r) => setRecentTrades(r.items))
+        .catch(() => {})
+    }, DASHBOARD_REFRESH_MS)
+    return () => clearInterval(t)
+  }, [])
 
   // Refresco métricas: si hay cuenta seleccionada, dashboard-summary; si no, dashboard
   useEffect(() => {
@@ -385,6 +403,60 @@ export function Dashboard() {
               {(!metrics?.pnl_by_leverage?.length) && <li className="text-sm text-[var(--text-muted)]">Sin datos</li>}
             </ul>
           </div>
+        </div>
+      </div>
+
+      {/* Historial reciente en la parte inferior */}
+      <div className="rounded-xl border border-white/10 bg-[var(--surface-muted)] p-4">
+        <div className="mb-4 flex items-center justify-between">
+          <h3 className="flex items-center gap-2 text-sm font-semibold text-[var(--text-muted)]">
+            <History className="h-4 w-4" />
+            Historial reciente
+          </h3>
+          <Link
+            to="/history"
+            className="flex items-center gap-1 rounded-lg border border-white/10 px-3 py-1.5 text-sm font-medium hover:bg-white/5"
+          >
+            Ver todo
+            <ArrowRight className="h-4 w-4" />
+          </Link>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[500px] text-sm">
+            <thead>
+              <tr className="border-b border-white/10 text-left text-[var(--text-muted)]">
+                <th className="p-2 font-medium">Fecha</th>
+                <th className="p-2 font-medium">Símbolo</th>
+                <th className="p-2 font-medium">L/S</th>
+                <th className="p-2 font-medium">Entrada</th>
+                <th className="p-2 font-medium">Salida</th>
+                <th className="p-2 font-medium">PnL neto</th>
+                <th className="p-2 font-medium">Estado</th>
+              </tr>
+            </thead>
+            <tbody>
+              {recentTrades.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="p-6 text-center text-[var(--text-muted)]">
+                    No hay operaciones. <Link to="/trade" className="text-[var(--accent)] hover:underline">Nueva operación</Link>
+                  </td>
+                </tr>
+              )}
+              {recentTrades.map((t) => (
+                <tr key={t.id} className="border-b border-white/5 hover:bg-white/5">
+                  <td className="p-2">{format(new Date(t.created_at), 'dd/MM/yy HH:mm')}</td>
+                  <td className="p-2">{t.symbol}</td>
+                  <td className="p-2">{t.position_side}</td>
+                  <td className="p-2">{t.entry_price}</td>
+                  <td className="p-2">{t.exit_price ?? '—'}</td>
+                  <td className={`p-2 font-medium ${t.net_pnl_usdt != null && parseFloat(t.net_pnl_usdt) >= 0 ? 'text-[var(--positive)]' : 'text-[var(--negative)]'}`}>
+                    {t.net_pnl_usdt != null ? `$${parseFloat(t.net_pnl_usdt).toFixed(2)}` : '—'}
+                  </td>
+                  <td className="p-2">{t.status ?? (t.closed_at ? 'CLOSED' : 'OPEN')}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </div>
     </div>
