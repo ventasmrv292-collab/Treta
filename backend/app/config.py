@@ -45,12 +45,17 @@ class Settings(BaseSettings):
     binance_futures_ws_url: str = "wss://fstream.binance.com/ws"
     binance_futures_rest_url: str = "https://fapi.binance.com"
 
-    # CORS
+    # CORS (en Render definir CORS_ORIGINS=https://treta-ruby.vercel.app)
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
 
     @property
     def cors_origins_list(self) -> list[str]:
-        return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+        origins = [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+        # En Render (PORT inyectado) añadir frontend Vercel si no está ya
+        vercel_origin = "https://treta-ruby.vercel.app"
+        if __import__("os").environ.get("PORT") and vercel_origin not in origins:
+            origins = list(origins) + [vercel_origin]
+        return origins
 
 
 settings = Settings()
