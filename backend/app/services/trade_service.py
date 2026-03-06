@@ -166,4 +166,30 @@ async def close_trade_and_compute_pnl(
     trade.net_pnl_usdt = res.net_pnl_usdt
     trade.pnl_pct_notional = res.pnl_pct_notional
     trade.pnl_pct_margin = res.pnl_pct_margin
+
+    if trade.account_id is not None:
+        await _update_account_on_trade_close(session, trade, res)
+
     return trade
+
+
+async def _update_account_on_trade_close(
+    session: AsyncSession, trade: Trade, res: "TradeFeesResult"
+) -> None:
+    """Actualiza la cuenta paper al cerrar una operación: libera margen, aplica PnL y fees."""
+    result = await session.execute(
+        select(PaperAccount).where(PaperAccount.id == trade.account_id)
+    )
+    account = result.scalar_one_or_none()
+    if not account:
+        return
+    margin_used = trade.margin_used_usdt or Decimal("0")
+    net_pnl = res.net_pnl_usdt
+    total_fees_trade = res.entry_fee + res.exit_fee + (res.funding_fee or Decimal("0"))
+    account.used_margin_usdt = max(Decimal("0"), account.used_margin_usdt - margin_used)
+    account.current_balance_usdt = account.current_balance_usdt + net_pnl
+    account.realized_pnl_usdt = account.realized_pnl_usdt + net_pnl
+    account.total_fees_usdt = account.total_fees_usdt + total_fees_trade
+    account.unrealized_pnl_usdt = Decimal("0")
+    account.available_balance_usdt = account.current_balance_usdt - account.used_margin_usdt
+    trade.capital_after_usdt = account.current_balance_usdt

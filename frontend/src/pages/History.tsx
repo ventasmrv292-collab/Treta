@@ -244,7 +244,11 @@ export function History() {
                   {!t.closed_at && (
                     <button
                       type="button"
-                      onClick={() => { setClosingId(t.id); setCloseForm({ exit_price: '', exit_order_type: 'MARKET', maker_taker_exit: 'TAKER', exit_reason: '' }) }}
+                      onClick={() => {
+                        const precioActual = t.symbol === 'BTCUSDT' && currentPrice != null ? currentPrice.toFixed(2) : ''
+                        setClosingId(t.id)
+                        setCloseForm({ exit_price: precioActual, exit_order_type: 'MARKET', maker_taker_exit: 'TAKER', exit_reason: '' })
+                      }}
                       className="rounded bg-[var(--accent)]/80 px-2 py-1 text-xs font-medium hover:bg-[var(--accent)]"
                     >
                       Cerrar
@@ -256,7 +260,9 @@ export function History() {
           </tbody>
         </table>
       </div>
-      {closingId != null && (
+      {closingId != null && (() => {
+        const closingTrade = trades.find((t) => t.id === closingId)
+        return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
           <div className="w-full max-w-md rounded-xl border border-white/10 bg-[var(--surface-muted)] p-6">
             <div className="mb-4 flex items-center justify-between">
@@ -268,12 +274,27 @@ export function History() {
             <div className="space-y-3">
               <label className="block">
                 <span className="text-sm text-[var(--text-muted)]">Precio de salida *</span>
-                <input
-                  type="text"
-                  value={closeForm.exit_price}
-                  onChange={(e) => setCloseForm((f) => ({ ...f, exit_price: e.target.value }))}
-                  className="mt-1 w-full rounded border border-white/10 bg-[var(--surface)] px-3 py-2 text-sm"
-                />
+                <div className="mt-1 flex gap-2">
+                  <input
+                    type="text"
+                    value={closeForm.exit_price}
+                    onChange={(e) => setCloseForm((f) => ({ ...f, exit_price: e.target.value }))}
+                    className="flex-1 rounded border border-white/10 bg-[var(--surface)] px-3 py-2 text-sm"
+                    placeholder="Precio actual si está vacío"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!closingTrade) return
+                      fetchPrice(closingTrade.symbol)
+                        .then((r) => setCloseForm((f) => ({ ...f, exit_price: r.price })))
+                        .catch(() => addToast('No se pudo obtener el precio', 'error'))
+                    }}
+                    className="shrink-0 rounded border border-white/20 bg-[var(--surface)] px-3 py-2 text-xs font-medium hover:bg-white/5"
+                  >
+                    Precio actual
+                  </button>
+                </div>
               </label>
               <label className="block">
                 <span className="text-sm text-[var(--text-muted)]">Tipo orden</span>
@@ -326,7 +347,8 @@ export function History() {
             </div>
           </div>
         </div>
-      )}
+        )
+      })()}
 
       <div className="flex items-center justify-between">
         <p className="text-sm text-[var(--text-muted)]">
