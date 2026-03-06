@@ -42,7 +42,7 @@ export const endpoints = {
     }) => `/trades${qs(params as Record<string, string | number | boolean | undefined>)}`,
     get: (id: number) => `/trades/${id}`,
     create: () => '/trades',
-    close: (id: number) => `/trades/${id}/close',
+    close: (id: number) => `/trades/${id}/close`,
   },
   strategies: {
     list: () => '/strategies',
