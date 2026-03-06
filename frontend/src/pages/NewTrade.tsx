@@ -97,6 +97,15 @@ export function NewTrade() {
   const strategyFamilies = [...new Set(strategies.map((s) => s.family))]
   const strategyNames = strategies.filter((s) => s.family === form.strategy_family)
 
+  const qty = parseFloat(form.quantity) || 0
+  const entryPrice = parseFloat(form.entry_price) || 0
+  const entryNotional = qty * entryPrice
+  const marginUsed = form.leverage ? entryNotional / form.leverage : 0
+  const entryFeeRate = 0.0004
+  const entryFee = entryNotional * entryFeeRate
+  const selectedAccount = paperAccounts.find((a) => a.id === selectedAccountId)
+  const availableAfter = selectedAccount ? parseFloat(selectedAccount.available_balance_usdt) - marginUsed - entryFee : 0
+
   return (
     <div className="mx-auto max-w-2xl space-y-6">
       <h2 className="text-xl font-semibold">Nueva operación manual</h2>

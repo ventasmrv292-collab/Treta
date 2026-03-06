@@ -265,12 +265,12 @@ export function Dashboard() {
         </div>
       </div>
 
-      {accountSummary && (
-        <div className="rounded-xl border border-white/10 bg-[var(--surface-muted)] p-4">
-          <h3 className="mb-4 flex items-center gap-2 text-sm font-semibold text-[var(--text-muted)]">
-            <Wallet className="h-4 w-4" />
-            Cuenta Paper
-            {paperAccounts.length > 1 && (
+      {/* Capital / Cuenta Paper: siempre visible en el dashboard principal */}
+      <div className="rounded-xl border border-white/10 bg-[var(--surface-muted)] p-4">
+        <h3 className="mb-4 flex items-center gap-2 text-sm font-semibold text-[var(--text-muted)]">
+          <Wallet className="h-4 w-4" />
+          Capital · Cuenta Paper
+          {paperAccounts.length > 1 && accountSummary && (
               <select
                 className="ml-2 rounded border border-white/10 bg-[var(--bg)] px-2 py-1 text-sm text-[var(--text)]"
                 value={selectedAccountId ?? ''}
@@ -298,36 +298,41 @@ export function Dashboard() {
               </select>
             )}
           </h3>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-6">
-            <div className="rounded-lg border border-white/5 bg-black/20 p-3">
-              <p className="text-xs text-[var(--text-muted)]">Capital inicial</p>
-              <p className="text-lg font-semibold">${parseFloat(accountSummary.initial_balance_usdt).toFixed(2)}</p>
+          {accountSummary ? (
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-6">
+              <div className="rounded-lg border border-white/5 bg-black/20 p-3">
+                <p className="text-xs text-[var(--text-muted)]">Capital inicial</p>
+                <p className="text-lg font-semibold">${parseFloat(accountSummary.initial_balance_usdt).toFixed(2)}</p>
+              </div>
+              <div className="rounded-lg border border-white/5 bg-black/20 p-3">
+                <p className="text-xs text-[var(--text-muted)]">Balance actual</p>
+                <p className="text-lg font-semibold">${parseFloat(accountSummary.current_balance_usdt).toFixed(2)}</p>
+              </div>
+              <div className="rounded-lg border border-white/5 bg-black/20 p-3">
+                <p className="text-xs text-[var(--text-muted)]">Equity</p>
+                <p className="text-lg font-semibold">
+                  ${accountSummary.equity_usdt != null ? parseFloat(accountSummary.equity_usdt).toFixed(2) : parseFloat(accountSummary.current_balance_usdt).toFixed(2)}
+                </p>
+              </div>
+              <div className="rounded-lg border border-white/5 bg-black/20 p-3">
+                <p className="text-xs text-[var(--text-muted)]">Capital disponible</p>
+                <p className="text-lg font-semibold">${parseFloat(accountSummary.available_balance_usdt).toFixed(2)}</p>
+              </div>
+              <div className="rounded-lg border border-white/5 bg-black/20 p-3">
+                <p className="text-xs text-[var(--text-muted)]">Margen usado</p>
+                <p className="text-lg font-semibold">${parseFloat(accountSummary.used_margin_usdt).toFixed(2)}</p>
+              </div>
+              <div className="rounded-lg border border-white/5 bg-black/20 p-3">
+                <p className="text-xs text-[var(--text-muted)]">Fees acumuladas</p>
+                <p className="text-lg font-semibold">${parseFloat(accountSummary.total_fees_usdt).toFixed(2)}</p>
+              </div>
             </div>
-            <div className="rounded-lg border border-white/5 bg-black/20 p-3">
-              <p className="text-xs text-[var(--text-muted)]">Balance actual</p>
-              <p className="text-lg font-semibold">${parseFloat(accountSummary.current_balance_usdt).toFixed(2)}</p>
-            </div>
-            <div className="rounded-lg border border-white/5 bg-black/20 p-3">
-              <p className="text-xs text-[var(--text-muted)]">Equity</p>
-              <p className="text-lg font-semibold">
-                ${accountSummary.equity_usdt != null ? parseFloat(accountSummary.equity_usdt).toFixed(2) : parseFloat(accountSummary.current_balance_usdt).toFixed(2)}
-              </p>
-            </div>
-            <div className="rounded-lg border border-white/5 bg-black/20 p-3">
-              <p className="text-xs text-[var(--text-muted)]">Capital disponible</p>
-              <p className="text-lg font-semibold">${parseFloat(accountSummary.available_balance_usdt).toFixed(2)}</p>
-            </div>
-            <div className="rounded-lg border border-white/5 bg-black/20 p-3">
-              <p className="text-xs text-[var(--text-muted)]">Margen usado</p>
-              <p className="text-lg font-semibold">${parseFloat(accountSummary.used_margin_usdt).toFixed(2)}</p>
-            </div>
-            <div className="rounded-lg border border-white/5 bg-black/20 p-3">
-              <p className="text-xs text-[var(--text-muted)]">Fees acumuladas</p>
-              <p className="text-lg font-semibold">${parseFloat(accountSummary.total_fees_usdt).toFixed(2)}</p>
-            </div>
-          </div>
+          ) : (
+            <p className="text-sm text-[var(--text-muted)]">
+              {loading ? 'Cargando cuenta...' : 'No hay cuenta paper. Ejecuta en Supabase el seed docs/seeds/001_initial_seed.sql (después de las migraciones) para crear la cuenta por defecto.'}
+            </p>
+          )}
         </div>
-      )}
 
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2 rounded-xl border border-white/10 bg-[var(--surface-muted)] p-4">
