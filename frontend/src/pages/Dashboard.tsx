@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { CandlestickChart } from '../components/CandlestickChart'
-import { fetchKlines, fetchPrice, fetchDashboard, fetchPaperAccounts, fetchDashboardSummary, fetchTrades } from '../api/endpoints'
+import { fetchKlines, fetchPrice, fetchDashboard, fetchPaperAccounts, fetchDashboardSummary, fetchTrades, fetchSupervisorStatus, fetchBotLogs } from '../api/endpoints'
 import { WS_BASE } from '../config'
 import type { CandleData, PaperAccount, Trade } from '../types'
 import { format } from 'date-fns'
-import { TrendingUp, Activity, DollarSign, Percent, Wallet, History, ArrowRight } from 'lucide-react'
+import { TrendingUp, Activity, DollarSign, Percent, Wallet, History, ArrowRight, Bot, FileText } from 'lucide-react'
 
 const TIMEFRAMES = ['1m', '5m', '15m', '1h'] as const
 
@@ -44,8 +44,13 @@ export function Dashboard() {
     used_margin_usdt: string
     total_fees_usdt: string
     equity_usdt: string | null
+    realized_pnl_usdt?: string
+    unrealized_pnl_usdt?: string
+    open_positions_count?: number
   } | null>(null)
   const [recentTrades, setRecentTrades] = useState<Trade[]>([])
+  const [supervisorStatus, setSupervisorStatus] = useState<{ running: boolean; last_cycle_at: number | null; check_interval_seconds: number } | null>(null)
+  const [botLogs, setBotLogs] = useState<{ id: number; level: string; event_type: string; message: string; created_at: string }[]>([])
 
   // Carga inicial: klines, precio, cuentas paper y dashboard (o summary con cuenta)
   useEffect(() => {
@@ -83,6 +88,9 @@ export function Dashboard() {
                 used_margin_usdt: summary.account.used_margin_usdt,
                 total_fees_usdt: summary.account.total_fees_usdt,
                 equity_usdt: summary.equity_usdt ?? null,
+                realized_pnl_usdt: summary.account.realized_pnl_usdt,
+                unrealized_pnl_usdt: summary.account.unrealized_pnl_usdt,
+                open_positions_count: summary.open_positions_count ?? 0,
               })
             }
             setStreamStatus('ok')
@@ -161,6 +169,19 @@ export function Dashboard() {
     return () => clearInterval(t)
   }, [interval])
 
+  // Supervisor y bot logs
+  useEffect(() => {
+    fetchSupervisorStatus().then(setSupervisorStatus).catch(() => setSupervisorStatus(null))
+    fetchBotLogs({ limit: 15 }).then((logs) => setBotLogs(logs)).catch(() => setBotLogs([]))
+  }, [])
+  useEffect(() => {
+    const t = setInterval(() => {
+      fetchSupervisorStatus().then(setSupervisorStatus).catch(() => {})
+      fetchBotLogs({ limit: 15 }).then((logs) => setBotLogs(logs)).catch(() => {})
+    }, 30000)
+    return () => clearInterval(t)
+  }, [])
+
   // Historial reciente (parte inferior del dashboard)
   useEffect(() => {
     fetchTrades({ page: 1, size: 10 })
@@ -199,6 +220,9 @@ export function Dashboard() {
                 used_margin_usdt: summary.account.used_margin_usdt,
                 total_fees_usdt: summary.account.total_fees_usdt,
                 equity_usdt: summary.equity_usdt ?? null,
+                realized_pnl_usdt: summary.account.realized_pnl_usdt,
+                unrealized_pnl_usdt: summary.account.unrealized_pnl_usdt,
+                open_positions_count: summary.open_positions_count ?? 0,
               })
           })
           .catch(() => {})
@@ -305,6 +329,9 @@ export function Dashboard() {
                           used_margin_usdt: s.account.used_margin_usdt,
                           total_fees_usdt: s.account.total_fees_usdt,
                           equity_usdt: s.equity_usdt ?? null,
+                          realized_pnl_usdt: s.account.realized_pnl_usdt,
+                          unrealized_pnl_usdt: s.account.unrealized_pnl_usdt,
+                          open_positions_count: s.open_positions_count ?? 0,
                         })
                     })
                   }
@@ -317,7 +344,7 @@ export function Dashboard() {
             )}
           </h3>
           {accountSummary ? (
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-6">
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
               <div className="rounded-lg border border-white/5 bg-black/20 p-3">
                 <p className="text-xs text-[var(--text-muted)]">Capital inicial</p>
                 <p className="text-lg font-semibold">${parseFloat(accountSummary.initial_balance_usdt).toFixed(2)}</p>
@@ -341,8 +368,24 @@ export function Dashboard() {
                 <p className="text-lg font-semibold">${parseFloat(accountSummary.used_margin_usdt).toFixed(2)}</p>
               </div>
               <div className="rounded-lg border border-white/5 bg-black/20 p-3">
+                <p className="text-xs text-[var(--text-muted)]">PnL realizado</p>
+                <p className={`text-lg font-semibold ${parseFloat(accountSummary.realized_pnl_usdt ?? '0') >= 0 ? 'text-[var(--positive)]' : 'text-[var(--negative)]'}`}>
+                  ${parseFloat(accountSummary.realized_pnl_usdt ?? '0').toFixed(2)}
+                </p>
+              </div>
+              <div className="rounded-lg border border-white/5 bg-black/20 p-3">
+                <p className="text-xs text-[var(--text-muted)]">PnL no realizado</p>
+                <p className={`text-lg font-semibold ${parseFloat(accountSummary.unrealized_pnl_usdt ?? '0') >= 0 ? 'text-[var(--positive)]' : 'text-[var(--negative)]'}`}>
+                  ${parseFloat(accountSummary.unrealized_pnl_usdt ?? '0').toFixed(2)}
+                </p>
+              </div>
+              <div className="rounded-lg border border-white/5 bg-black/20 p-3">
                 <p className="text-xs text-[var(--text-muted)]">Fees acumuladas</p>
                 <p className="text-lg font-semibold">${parseFloat(accountSummary.total_fees_usdt).toFixed(2)}</p>
+              </div>
+              <div className="rounded-lg border border-white/5 bg-black/20 p-3">
+                <p className="text-xs text-[var(--text-muted)]">Operaciones abiertas</p>
+                <p className="text-lg font-semibold">{accountSummary.open_positions_count ?? 0}</p>
               </div>
             </div>
           ) : (
@@ -351,6 +394,52 @@ export function Dashboard() {
             </p>
           )}
         </div>
+
+      {/* Estado del supervisor y últimos logs del bot */}
+      <div className="grid gap-4 lg:grid-cols-2">
+        <div className="rounded-xl border border-white/10 bg-[var(--surface-muted)] p-4">
+          <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold text-[var(--text-muted)]">
+            <Bot className="h-4 w-4" />
+            Supervisor del bot
+          </h3>
+          {supervisorStatus ? (
+            <div className="space-y-1 text-sm">
+              <p>
+                <span className="text-[var(--text-muted)]">Estado: </span>
+                <span className={supervisorStatus.running ? 'text-green-500' : 'text-amber-500'}>
+                  {supervisorStatus.running ? 'Activo' : 'Inactivo'}
+                </span>
+              </p>
+              <p className="text-[var(--text-muted)]">
+                Ciclo cada {supervisorStatus.check_interval_seconds} s
+                {supervisorStatus.last_cycle_at != null && (
+                  <> · Último: {format(new Date(supervisorStatus.last_cycle_at * 1000), 'HH:mm:ss')}</>
+                )}
+              </p>
+            </div>
+          ) : (
+            <p className="text-sm text-[var(--text-muted)]">No disponible</p>
+          )}
+        </div>
+        <div className="rounded-xl border border-white/10 bg-[var(--surface-muted)] p-4">
+          <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold text-[var(--text-muted)]">
+            <FileText className="h-4 w-4" />
+            Últimos logs del bot
+          </h3>
+          <div className="max-h-32 overflow-y-auto space-y-1 text-xs">
+            {botLogs.length === 0 && <p className="text-[var(--text-muted)]">Sin logs recientes</p>}
+            {botLogs.map((log) => (
+              <div key={log.id} className="flex flex-wrap gap-1 border-b border-white/5 py-0.5">
+                <span className="text-[var(--text-muted)] shrink-0">{format(new Date(log.created_at), 'HH:mm:ss')}</span>
+                <span className={log.level === 'ERROR' ? 'text-red-400' : log.level === 'WARN' ? 'text-amber-400' : ''}>
+                  [{log.event_type}]
+                </span>
+                <span className="truncate">{log.message}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2 rounded-xl border border-white/10 bg-[var(--surface-muted)] p-4">

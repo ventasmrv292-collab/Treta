@@ -1,8 +1,8 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { fetchStrategies, fetchPaperAccounts, createTrade } from '../api/endpoints'
+import { fetchStrategies, fetchPaperAccounts, createTrade, fetchRiskProfiles, fetchPositionSizePreview } from '../api/endpoints'
 import { useToast } from '../components/Toaster'
-import type { Strategy, PaperAccount } from '../types'
+import type { Strategy, PaperAccount, RiskProfile, PositionSizePreview } from '../types'
 import type { ManualTradeCreate } from '../types'
 
 const TIMEFRAMES = ['1m', '5m', '15m', '1h']
@@ -18,7 +18,7 @@ export function NewTrade() {
   const [paperAccounts, setPaperAccounts] = useState<PaperAccount[]>([])
   const [selectedAccountId, setSelectedAccountId] = useState<number | null>(null)
   const [loading, setLoading] = useState(false)
-  const [form, setForm] = useState<ManualTradeCreate>({
+  const [form, setForm] = useState<ManualTradeCreate & { risk_profile_id?: number | null }>({
     source: 'manual',
     symbol: 'BTCUSDT',
     market: 'usdt_m',
@@ -37,6 +37,8 @@ export function NewTrade() {
     stop_loss: '',
     notes: '',
   })
+  const [riskProfiles, setRiskProfiles] = useState<RiskProfile[]>([])
+  const [sizingPreview, setSizingPreview] = useState<PositionSizePreview | null>(null)
 
   useEffect(() => {
     fetchStrategies().then(setStrategies).catch(() => addToast('Error cargando estrategias', 'error'))
@@ -46,7 +48,34 @@ export function NewTrade() {
         if (accs.length > 0) setSelectedAccountId(accs[0].id)
       })
       .catch(() => {})
+    fetchRiskProfiles().then(setRiskProfiles).catch(() => {})
   }, [addToast])
+
+  const selectedProfileId = form.risk_profile_id ?? null
+  const loadSizingPreview = useCallback(() => {
+    if (!selectedProfileId || !form.entry_price || parseFloat(form.entry_price) <= 0) {
+      setSizingPreview(null)
+      return
+    }
+    const needStop = riskProfiles.find((p) => p.id === selectedProfileId)?.sizing_mode === 'RISK_PCT_OF_EQUITY'
+    if (needStop && (!form.stop_loss || parseFloat(form.stop_loss) <= 0)) {
+      setSizingPreview(null)
+      return
+    }
+    fetchPositionSizePreview(selectedProfileId, {
+      entry_price: form.entry_price,
+      leverage: form.leverage,
+      stop_loss: form.stop_loss || undefined,
+      position_side: form.position_side,
+      account_id: selectedAccountId ?? undefined,
+    })
+      .then(setSizingPreview)
+      .catch(() => setSizingPreview(null))
+  }, [selectedProfileId, form.entry_price, form.leverage, form.stop_loss, form.position_side, selectedAccountId, riskProfiles])
+
+  useEffect(() => {
+    loadSizingPreview()
+  }, [loadSizingPreview])
 
   useEffect(() => {
     const s = strategies.find((x) => `${x.family}/${x.name}` === `${form.strategy_family}/${form.strategy_name}`)
@@ -77,12 +106,13 @@ export function NewTrade() {
     }
     setLoading(true)
     try {
-      const payload: ManualTradeCreate = {
+      const payload: ManualTradeCreate & { risk_profile_id?: number | null } = {
         ...form,
         order_side_entry: form.position_side === 'LONG' ? 'BUY' : 'SELL',
         take_profit: form.take_profit || undefined,
         stop_loss: form.stop_loss || undefined,
         ...(selectedAccountId != null && { account_id: selectedAccountId }),
+        ...(form.risk_profile_id != null && { risk_profile_id: form.risk_profile_id }),
       }
       await createTrade(payload)
       addToast('Operación registrada correctamente', 'success')
@@ -241,6 +271,22 @@ export function NewTrade() {
               ))}
             </select>
           </label>
+          <label className="block sm:col-span-2">
+            <span className="mb-1 block text-sm text-[var(--text-muted)]">Perfil de riesgo (opcional)</span>
+            <select
+              value={form.risk_profile_id ?? ''}
+              onChange={(e) => {
+                const v = e.target.value
+                setForm((f) => ({ ...f, risk_profile_id: v ? Number(v) : null }))
+              }}
+              className="w-full rounded-lg border border-white/10 bg-[var(--surface)] px-3 py-2 text-sm"
+            >
+              <option value="">Sin perfil (cantidad manual)</option>
+              {riskProfiles.map((p) => (
+                <option key={p.id} value={p.id}>{p.name} ({p.sizing_mode})</option>
+              ))}
+            </select>
+          </label>
           <label className="block">
             <span className="mb-1 block text-sm text-[var(--text-muted)]">Cantidad</span>
             <input
@@ -297,6 +343,20 @@ export function NewTrade() {
             className="w-full rounded-lg border border-white/10 bg-[var(--surface)] px-3 py-2 text-sm"
           />
         </label>
+        {sizingPreview && (
+          <div className="rounded-lg border border-green-500/20 bg-green-500/5 p-4">
+            <p className="mb-2 text-sm font-medium text-[var(--text-muted)]">Preview por perfil de riesgo</p>
+            <ul className="space-y-1 text-sm">
+              <li>Cantidad calculada: {sizingPreview.quantity}</li>
+              <li>Notional: ${parseFloat(sizingPreview.entry_notional).toFixed(2)}</li>
+              <li>Margen usado: ${parseFloat(sizingPreview.margin_used_usdt).toFixed(2)}</li>
+              <li>Fee entrada (est.): ${parseFloat(sizingPreview.entry_fee_estimate).toFixed(2)}</li>
+              {sizingPreview.estimated_loss_to_sl_usdt != null && (
+                <li className="text-amber-400">Pérdida estimada hasta SL: ${parseFloat(sizingPreview.estimated_loss_to_sl_usdt).toFixed(2)}</li>
+              )}
+            </ul>
+          </div>
+        )}
         {qty > 0 && entryPrice > 0 && (
           <div className="rounded-lg border border-white/10 bg-black/20 p-4">
             <p className="mb-2 text-sm font-medium text-[var(--text-muted)]">Preview</p>

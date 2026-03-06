@@ -27,6 +27,7 @@ class ManualTradeCreate(TradeBase):
     maker_taker_entry: str = "TAKER"  # MAKER, TAKER
     account_id: int | None = None
     fee_config_id: int | None = None
+    risk_profile_id: int | None = None
 
 
 class ManualTradeClose(BaseModel):
@@ -63,6 +64,9 @@ class N8nTradeCreate(BaseModel):
     signal_timestamp: datetime | None = None
     strategy_params_json: str | None = None
     notes: str | None = None
+    account_id: int | None = None
+    risk_profile_id: int | None = None
+    idempotency_key: str | None = None
 
 
 class TradeCreate(BaseModel):
@@ -90,6 +94,7 @@ class TradeResponse(BaseModel):
     margin_used_usdt: Decimal | None = None
     capital_before_usdt: Decimal | None = None
     capital_after_usdt: Decimal | None = None
+    risk_profile_id: int | None = None
     source: str
     symbol: str
     market: str

@@ -36,3 +36,4 @@ class DashboardSummaryResponse(BaseModel):
     # Cuenta paper (si account_id proporcionado)
     account: PaperAccountResponse | None = None
     equity_usdt: str | None = None  # current_balance + unrealized
+    open_positions_count: int = 0  # operaciones abiertas de la cuenta

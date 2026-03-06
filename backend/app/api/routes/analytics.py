@@ -266,12 +266,20 @@ async def get_dashboard_summary(
 
     account = None
     equity_usdt = None
+    open_positions_count = 0
     if account_id:
         acc_result = await db.execute(select(PaperAccount).where(PaperAccount.id == account_id))
         acc = acc_result.scalar_one_or_none()
         if acc:
             account = PaperAccountResponse.model_validate(acc)
             equity_usdt = str(acc.current_balance_usdt + acc.unrealized_pnl_usdt)
+        open_count = await db.execute(
+            select(func.count(Trade.id)).where(
+                Trade.account_id == account_id,
+                Trade.closed_at.is_(None),
+            )
+        )
+        open_positions_count = open_count.scalar() or 0
 
     return DashboardSummaryResponse(
         total_trades=total_trades,
@@ -284,4 +292,5 @@ async def get_dashboard_summary(
         pnl_by_leverage=pnl_by_leverage,
         account=account,
         equity_usdt=equity_usdt,
+        open_positions_count=int(open_positions_count),
     )

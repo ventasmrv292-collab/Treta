@@ -18,6 +18,7 @@ from app.services.trade_service import (
     prepare_manual_trade,
     close_trade_and_compute_pnl,
 )
+from app.services.bot_log_service import log_event as bot_log_event, MODULE_TRADE, EVENT_TRADE_OPENED
 
 router = APIRouter()
 
@@ -36,6 +37,15 @@ async def create_manual_trade(
     db.add(trade)
     await db.flush()
     await db.refresh(trade)
+    await bot_log_event(
+        db,
+        "INFO",
+        MODULE_TRADE,
+        EVENT_TRADE_OPENED,
+        f"Trade #{trade.id} opened: {trade.symbol} {trade.position_side}",
+        context={"symbol": trade.symbol, "position_side": trade.position_side, "quantity": str(trade.quantity)},
+        related_trade_id=trade.id,
+    )
     return trade
 
 

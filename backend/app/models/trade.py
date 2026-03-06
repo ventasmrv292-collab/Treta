@@ -21,6 +21,7 @@ class Trade(Base):
     capital_before_usdt: Mapped[Decimal | None] = mapped_column(Numeric(20, 4), nullable=True)
     capital_after_usdt: Mapped[Decimal | None] = mapped_column(Numeric(20, 4), nullable=True)
     fee_config_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("fee_configs.id"), nullable=True)
+    risk_profile_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("risk_profiles.id"), nullable=True, index=True)
     idempotency_key: Mapped[str | None] = mapped_column(String(128), nullable=True)
 
     # Source & strategy

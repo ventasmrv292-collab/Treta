@@ -8,8 +8,11 @@ from app.models.paper_account import PaperAccount
 from app.models.account_ledger import AccountLedger
 from app.models.signal_event import SignalEvent
 from app.models.backtest_equity import BacktestEquityCurve
+from app.models.risk_profile import RiskProfile
+from app.models.bot_log import BotLog
 
 __all__ = [
     "Strategy", "Trade", "FeeConfig", "Candle", "BacktestRun", "BacktestResult",
     "PaperAccount", "AccountLedger", "SignalEvent", "BacktestEquityCurve",
+    "RiskProfile", "BotLog",
 ]

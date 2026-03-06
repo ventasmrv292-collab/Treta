@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import String, Numeric, DateTime, BigInteger, func
+from sqlalchemy import String, Numeric, DateTime, BigInteger, func, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -24,6 +24,7 @@ class PaperAccount(Base):
     unrealized_pnl_usdt: Mapped[Decimal] = mapped_column(Numeric(20, 4), nullable=False, default=0)
     total_fees_usdt: Mapped[Decimal] = mapped_column(Numeric(20, 4), nullable=False, default=0)
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="ACTIVE")
+    default_risk_profile_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("risk_profiles.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 

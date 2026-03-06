@@ -9,23 +9,23 @@ from app.config import settings
 from app.db import init_db
 from app.api.routes import api_router
 from app.services.price_stream import run_price_stream
-from app.services.tp_sl_checker import run_tp_sl_checker
+from app.services.position_supervisor import run_position_supervisor
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
     task_stream = asyncio.create_task(run_price_stream())
-    task_tp_sl = asyncio.create_task(run_tp_sl_checker())
+    task_supervisor = asyncio.create_task(run_position_supervisor())
     yield
     task_stream.cancel()
-    task_tp_sl.cancel()
+    task_supervisor.cancel()
     try:
         await task_stream
     except asyncio.CancelledError:
         pass
     try:
-        await task_tp_sl
+        await task_supervisor
     except asyncio.CancelledError:
         pass
 

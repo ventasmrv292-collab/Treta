@@ -24,6 +24,7 @@ export interface DashboardSummary {
   pnl_by_leverage: { leverage: number; net_pnl: number }[]
   account?: PaperAccount | null
   equity_usdt?: string | null
+  open_positions_count?: number
 }
 
 export interface Trade {
@@ -70,6 +71,7 @@ export interface Trade {
   margin_used_usdt?: string | null
   capital_before_usdt?: string | null
   capital_after_usdt?: string | null
+  risk_profile_id?: number | null
 }
 
 export interface TradeListResponse {
@@ -140,6 +142,50 @@ export interface ManualTradeCreate {
   notes?: string | null
   account_id?: number | null
   fee_config_id?: number | null
+  risk_profile_id?: number | null
+}
+
+export interface RiskProfile {
+  id: number
+  name: string
+  sizing_mode: string
+  fixed_quantity: string | null
+  fixed_notional_usdt: string | null
+  risk_pct_per_trade: string | null
+  max_open_positions: number
+  max_margin_pct_of_account: string
+  max_daily_loss_usdt: string | null
+  max_daily_loss_pct: string | null
+  cooldown_after_losses: number | null
+  allowed_leverage_json: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface PositionSizePreview {
+  quantity: string
+  entry_notional: string
+  margin_used_usdt: string
+  entry_fee_estimate: string
+  estimated_loss_to_sl_usdt: string | null
+}
+
+export interface BotLogEntry {
+  id: number
+  level: string
+  module: string
+  event_type: string
+  message: string
+  context_json: string | null
+  related_trade_id: number | null
+  related_signal_event_id: number | null
+  created_at: string
+}
+
+export interface SupervisorStatus {
+  running: boolean
+  last_cycle_at: number | null
+  check_interval_seconds: number
 }
 
 export interface TradeClosePayload {
