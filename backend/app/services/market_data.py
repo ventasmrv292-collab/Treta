@@ -141,8 +141,11 @@ async def _klines_from_coingecko(symbol: str, limit: int = 300) -> list[dict[str
 
 
 def _is_render_or_prefer_coingecko() -> bool:
-    """En Render (PORT inyectado) Binance devuelve 451; usar CoinGecko directamente."""
+    """En Render (PORT inyectado) Binance devuelve 451; usar CoinGecko directamente.
+    En otro host: si USE_BINANCE_FOR_MARKET=1, intentar Binance primero aunque PORT esté definido."""
     import os
+    if os.environ.get("USE_BINANCE_FOR_MARKET", "").lower() in ("1", "true", "yes"):
+        return False  # Forzar Binance (útil al cambiar de Render a otro proveedor)
     return os.environ.get("PORT") is not None or os.environ.get("USE_COINGECKO_FOR_MARKET", "").lower() in ("1", "true", "yes")
 
 

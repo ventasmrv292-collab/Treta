@@ -41,7 +41,7 @@ class Settings(BaseSettings):
         import os
         return int(os.environ.get("PORT", self.api_port))
 
-    # Binance
+    # Binance (si en tu host da 451, prueba BINANCE_FUTURES_REST_URL=https://fapi1.binance.com)
     binance_futures_ws_url: str = "wss://fstream.binance.com/ws"
     binance_futures_rest_url: str = "https://fapi.binance.com"
 
