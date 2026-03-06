@@ -2,12 +2,19 @@
 from decimal import Decimal
 from datetime import datetime, timezone
 
-from sqlalchemy import select, func, and_
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.trade import Trade
 from app.models.fee_config import FeeConfig
+from app.models.paper_account import PaperAccount
 from app.services.fee_engine import FeeEngine, FeeProfile
+from app.services.trading_capital import (
+    calc_entry_fee,
+    calc_margin_used,
+    get_fee_rate,
+    validate_can_open_trade,
+)
 from app.schemas.trade import ManualTradeCreate, ManualTradeClose, N8nTradeCreate
 
 
@@ -29,7 +36,7 @@ async def get_default_fee_engine(session: AsyncSession) -> FeeEngine:
 
 
 def manual_create_to_trade(d: ManualTradeCreate) -> dict:
-    """Convert ManualTradeCreate to Trade ORM kwargs."""
+    """Convert ManualTradeCreate to Trade ORM kwargs (sin margen/fee; ver prepare_manual_trade para datos completos)."""
     out = {
         "source": d.source,
         "symbol": d.symbol,
@@ -54,6 +61,46 @@ def manual_create_to_trade(d: ManualTradeCreate) -> dict:
     if getattr(d, "fee_config_id", None) is not None:
         out["fee_config_id"] = d.fee_config_id
     return out
+
+
+async def prepare_manual_trade(session: AsyncSession, payload: ManualTradeCreate) -> dict:
+    """
+    Prepara el diccionario para crear un trade: datos base + entry_notional, margin_used_usdt,
+    entry_fee, capital_before_usdt. Valida margen si hay account_id.
+    """
+    data = manual_create_to_trade(payload)
+    qty = Decimal(str(payload.quantity))
+    entry_price = Decimal(str(payload.entry_price))
+    entry_notional = (qty * entry_price).quantize(Decimal("0.0001"))
+    margin_used = calc_margin_used(entry_notional, payload.leverage)
+
+    engine = await get_default_fee_engine(session)
+    maker_taker = (payload.maker_taker_entry or "TAKER").upper()
+    rate = (
+        engine.config.taker_rate()
+        if maker_taker == "TAKER"
+        else engine.config.maker_rate()
+    )
+    entry_fee = calc_entry_fee(entry_notional, rate)
+
+    data["entry_notional"] = entry_notional
+    data["margin_used_usdt"] = margin_used
+    data["entry_fee"] = entry_fee
+
+    account_id = getattr(payload, "account_id", None)
+    if account_id is not None:
+        result = await session.execute(select(PaperAccount).where(PaperAccount.id == account_id))
+        account = result.scalar_one_or_none()
+        if account:
+            data["capital_before_usdt"] = account.current_balance_usdt
+            ok, msg = validate_can_open_trade(
+                account.available_balance_usdt,
+                margin_used,
+                entry_fee,
+            )
+            if not ok:
+                raise ValueError(msg)
+    return data
 
 
 def n8n_create_to_trade(d: N8nTradeCreate) -> dict:

@@ -1,7 +1,7 @@
 """Trade schemas."""
 from datetime import datetime
 from decimal import Decimal
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, field_validator
 
 
 class TradeBase(BaseModel):
@@ -35,6 +35,13 @@ class ManualTradeClose(BaseModel):
     maker_taker_exit: str = "TAKER"
     exit_reason: str
     closed_at: datetime | None = None
+
+    @field_validator("exit_price", mode="before")
+    @classmethod
+    def normalize_exit_price(cls, v):
+        if isinstance(v, str):
+            return v.replace(",", "").strip() or "0"
+        return v
 
 
 class N8nTradeCreate(BaseModel):

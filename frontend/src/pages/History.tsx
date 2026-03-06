@@ -1,13 +1,22 @@
 import { useState, useEffect } from 'react'
-import { fetchTrades, closeTrade } from '../api/endpoints'
+import { fetchTrades, fetchPrice, closeTrade } from '../api/endpoints'
 import type { Trade, TradeListResponse } from '../types'
 import { format } from 'date-fns'
-import { ChevronLeft, ChevronRight, X } from 'lucide-react'
+import { ChevronLeft, ChevronRight, X, RefreshCw } from 'lucide-react'
 import { useToast } from '../components/Toaster'
+
+/** PnL no realizado: LONG = (precioActual - entrada) * qty, SHORT = (entrada - precioActual) * qty */
+function unrealizedPnl(trade: Trade, currentPrice: number): number {
+  const qty = parseFloat(trade.quantity)
+  const entry = parseFloat(trade.entry_price)
+  if (trade.position_side === 'LONG') return (currentPrice - entry) * qty
+  return (entry - currentPrice) * qty
+}
 
 export function History() {
   const { addToast } = useToast()
   const [data, setData] = useState<TradeListResponse | null>(null)
+  const [currentPrice, setCurrentPrice] = useState<number | null>(null)
   const [page, setPage] = useState(1)
   const [closingId, setClosingId] = useState<number | null>(null)
   const [closeForm, setCloseForm] = useState({ exit_price: '', exit_order_type: 'MARKET' as const, maker_taker_exit: 'TAKER' as const, exit_reason: '' })
@@ -26,17 +35,65 @@ export function History() {
       .then(setData)
       .catch(() => setData(null))
   }
+
+  // Carga inicial y al cambiar página/filtros
   useEffect(() => {
     loadTrades()
   }, [page, filters.source, filters.position_side, filters.leverage, filters.closed_only, filters.winners_only, filters.losers_only])
+
+  // Tiempo real: refrescar al volver a la pestaña
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') loadTrades()
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
+  }, [page, filters.source, filters.position_side, filters.leverage, filters.closed_only, filters.winners_only, filters.losers_only])
+
+  // Tiempo real: polling cada 30 s mientras la pestaña está visible
+  const HISTORY_POLL_MS = 30_000
+  useEffect(() => {
+    const t = setInterval(() => {
+      if (document.visibilityState === 'visible') loadTrades()
+    }, HISTORY_POLL_MS)
+    return () => clearInterval(t)
+  }, [page, filters.source, filters.position_side, filters.leverage, filters.closed_only, filters.winners_only, filters.losers_only])
+
+  const trades = data?.items ?? []
+  const hasOpenTrades = trades.some((t) => !t.closed_at)
+  useEffect(() => {
+    if (!hasOpenTrades) {
+      setCurrentPrice(null)
+      return
+    }
+    let cancelled = false
+    fetchPrice('BTCUSDT')
+      .then((r) => { if (!cancelled) setCurrentPrice(parseFloat(r.price)) })
+      .catch(() => {})
+    const t = setInterval(() => {
+      fetchPrice('BTCUSDT')
+        .then((r) => { if (!cancelled) setCurrentPrice(parseFloat(r.price)) })
+        .catch(() => {})
+    }, 15_000)
+    return () => { cancelled = true; clearInterval(t) }
+  }, [hasOpenTrades])
 
   const handleCloseTrade = async () => {
     if (!closingId || !closeForm.exit_price || !closeForm.exit_reason) {
       addToast('Completa precio de salida y motivo', 'error')
       return
     }
+    const exitPriceNormalized = closeForm.exit_price.replace(/,/g, '').trim()
+    if (!exitPriceNormalized || Number.isNaN(Number(exitPriceNormalized))) {
+      addToast('Precio de salida no válido', 'error')
+      return
+    }
     try {
-      await closeTrade(closingId, { ...closeForm, closed_at: undefined })
+      await closeTrade(closingId, {
+        ...closeForm,
+        exit_price: exitPriceNormalized,
+        closed_at: undefined,
+      })
       addToast('Operación cerrada correctamente', 'success')
       setClosingId(null)
       setCloseForm({ exit_price: '', exit_order_type: 'MARKET', maker_taker_exit: 'TAKER', exit_reason: '' })
@@ -46,13 +103,23 @@ export function History() {
     }
   }
 
-  const trades = data?.items ?? []
   const total = data?.total ?? 0
   const pages = data?.pages ?? 0
 
   return (
     <div className="space-y-6">
-      <h2 className="text-xl font-semibold">Histórico de operaciones</h2>
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <h2 className="text-xl font-semibold">Histórico de operaciones</h2>
+        <button
+          type="button"
+          onClick={() => loadTrades()}
+          className="flex items-center gap-2 rounded-lg border border-white/10 bg-[var(--surface-muted)] px-3 py-1.5 text-sm hover:bg-white/5"
+          title="Actualizar lista (también se actualiza cada 30 s y al volver a la pestaña)"
+        >
+          <RefreshCw className="h-4 w-4" />
+          Refrescar
+        </button>
+      </div>
       <div className="flex flex-wrap gap-3">
         <select
           value={filters.source ?? ''}
@@ -165,7 +232,11 @@ export function History() {
                 <td className="p-3">{t.entry_fee != null ? parseFloat(t.entry_fee).toFixed(4) : '—'}</td>
                 <td className="p-3">{t.exit_fee != null ? parseFloat(t.exit_fee).toFixed(4) : '—'}</td>
                 <td className={`p-3 font-medium ${t.net_pnl_usdt != null && parseFloat(t.net_pnl_usdt) >= 0 ? 'text-[var(--positive)]' : 'text-[var(--negative)]'}`}>
-                  {t.net_pnl_usdt != null ? `$${parseFloat(t.net_pnl_usdt).toFixed(2)}` : '—'}
+                  {t.closed_at && t.net_pnl_usdt != null
+                    ? `$${parseFloat(t.net_pnl_usdt).toFixed(2)}`
+                    : !t.closed_at && currentPrice != null && t.symbol === 'BTCUSDT'
+                      ? `~ $${unrealizedPnl(t, currentPrice).toFixed(2)} (abierta)`
+                      : '—'}
                 </td>
                 <td className="p-3">{t.pnl_pct_notional != null ? `${parseFloat(t.pnl_pct_notional).toFixed(2)}%` : '—'}</td>
                 <td className="p-3">{t.exit_reason ?? '—'}</td>

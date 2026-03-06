@@ -15,9 +15,8 @@ from app.schemas.trade import (
     TradeUpdate,
 )
 from app.services.trade_service import (
-    manual_create_to_trade,
+    prepare_manual_trade,
     close_trade_and_compute_pnl,
-    get_default_fee_engine,
 )
 
 router = APIRouter()
@@ -28,8 +27,11 @@ async def create_manual_trade(
     payload: ManualTradeCreate,
     db: AsyncSession = Depends(get_db),
 ):
-    """Register a manual trade (open position)."""
-    data = manual_create_to_trade(payload)
+    """Register a manual trade (open position). Computes margin, entry_fee, capital_before; validates if account_id set."""
+    try:
+        data = await prepare_manual_trade(db, payload)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     trade = Trade(**data)
     db.add(trade)
     await db.flush()
