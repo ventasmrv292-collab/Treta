@@ -117,6 +117,11 @@ export function History() {
               <th className="p-3 font-medium">Fecha</th>
               <th className="p-3 font-medium">Símbolo</th>
               <th className="p-3 font-medium">Origen</th>
+              <th className="p-3 font-medium">Estado</th>
+              <th className="p-3 font-medium">Cuenta</th>
+              <th className="p-3 font-medium">Margen</th>
+              <th className="p-3 font-medium">Cap. ant.</th>
+              <th className="p-3 font-medium">Cap. des.</th>
               <th className="p-3 font-medium">Estrategia</th>
               <th className="p-3 font-medium">TF</th>
               <th className="p-3 font-medium">L/S</th>
@@ -135,7 +140,7 @@ export function History() {
           <tbody>
             {trades.length === 0 && (
               <tr>
-                <td colSpan={16} className="p-8 text-center text-[var(--text-muted)]">
+                <td colSpan={21} className="p-8 text-center text-[var(--text-muted)]">
                   No hay operaciones con los filtros actuales.
                 </td>
               </tr>
@@ -145,6 +150,11 @@ export function History() {
                 <td className="p-3">{format(new Date(t.created_at), 'dd/MM/yy HH:mm')}</td>
                 <td className="p-3">{t.symbol}</td>
                 <td className="p-3">{t.source}</td>
+                <td className="p-3">{t.status ?? (t.closed_at ? 'CLOSED' : 'OPEN')}</td>
+                <td className="p-3">{t.account_id ?? '—'}</td>
+                <td className="p-3">{t.margin_used_usdt != null ? `$${parseFloat(t.margin_used_usdt).toFixed(2)}` : '—'}</td>
+                <td className="p-3">{t.capital_before_usdt != null ? `$${parseFloat(t.capital_before_usdt).toFixed(2)}` : '—'}</td>
+                <td className="p-3">{t.capital_after_usdt != null ? `$${parseFloat(t.capital_after_usdt).toFixed(2)}` : '—'}</td>
                 <td className="p-3">{t.strategy_name}</td>
                 <td className="p-3">{t.timeframe}</td>
                 <td className="p-3">{t.position_side}</td>

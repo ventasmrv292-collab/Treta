@@ -18,6 +18,9 @@ class Candle(Base):
     low: Mapped[Decimal] = mapped_column(Numeric(20, 8), nullable=False)
     close: Mapped[Decimal] = mapped_column(Numeric(20, 8), nullable=False)
     volume: Mapped[Decimal] = mapped_column(Numeric(20, 4), nullable=False)
+    close_time: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    is_closed: Mapped[bool] = mapped_column(default=True, nullable=False)
+    source: Mapped[str] = mapped_column(String(32), nullable=False, default="BINANCE")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     __table_args__ = (

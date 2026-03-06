@@ -58,6 +58,9 @@ async def run_backtest(payload: BacktestRunCreate, db=Depends(get_db)):
             run.total_fees = Decimal("0")
             run.win_rate = 0
             run.profit_factor = 0
+            run.final_capital = payload.initial_capital
+            run.peak_equity = payload.initial_capital
+            run.min_equity = payload.initial_capital
             await db.flush()
             await db.refresh(run)
             return run
@@ -108,6 +111,9 @@ async def run_backtest(payload: BacktestRunCreate, db=Depends(get_db)):
         run.win_rate = 100.0 if res.net_pnl_usdt > 0 else 0.0
         run.profit_factor = float(res.net_pnl_usdt / (res.entry_fee + res.exit_fee)) if (res.entry_fee + res.exit_fee) else 0
         run.max_drawdown_pct = 0
+        run.final_capital = payload.initial_capital + res.net_pnl_usdt
+        run.peak_equity = max(payload.initial_capital, run.final_capital)
+        run.min_equity = min(payload.initial_capital, run.final_capital)
     except Exception as e:
         run.status = "failed"
         raise HTTPException(status_code=500, detail=str(e)) from e

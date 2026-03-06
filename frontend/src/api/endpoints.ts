@@ -4,6 +4,8 @@ import type {
   TradeListResponse,
   Strategy,
   DashboardMetrics,
+  DashboardSummary,
+  PaperAccount,
   KlinesResponse,
   ManualTradeCreate,
   TradeClosePayload,
@@ -51,8 +53,14 @@ export const endpoints = {
     list: () => '/strategies',
     get: (id: number) => `/strategies/${id}`,
   },
+  paperAccounts: {
+    list: () => '/paper-accounts',
+    get: (id: number) => `/paper-accounts/${id}`,
+  },
   analytics: {
     dashboard: () => '/analytics/dashboard',
+    dashboardSummary: (accountId?: number) =>
+      accountId != null ? `/analytics/dashboard-summary${qs({ account_id: accountId })}` : '/analytics/dashboard-summary',
     byStrategy: () => '/analytics/by-strategy',
     byLeverage: () => '/analytics/by-leverage',
     equityCurve: (period?: string) => `/analytics/equity-curve${qs({ period: period || 'all' })}`,
@@ -89,6 +97,18 @@ export async function fetchDashboard() {
   const res = await fetch(`${API_V1}${endpoints.analytics.dashboard()}`)
   if (!res.ok) throw new Error('Failed to fetch dashboard')
   return res.json() as Promise<DashboardMetrics>
+}
+
+export async function fetchPaperAccounts() {
+  const res = await fetch(`${API_V1}${endpoints.paperAccounts.list()}`)
+  if (!res.ok) throw new Error('Failed to fetch paper accounts')
+  return res.json() as Promise<PaperAccount[]>
+}
+
+export async function fetchDashboardSummary(accountId?: number) {
+  const res = await fetch(`${API_V1}${endpoints.analytics.dashboardSummary(accountId)}`)
+  if (!res.ok) throw new Error('Failed to fetch dashboard summary')
+  return res.json() as Promise<DashboardSummary>
 }
 
 export async function fetchStrategies() {

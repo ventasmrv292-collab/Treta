@@ -25,6 +25,8 @@ class ManualTradeCreate(TradeBase):
     order_side_entry: str  # BUY, SELL
     order_type_entry: str = "MARKET"  # MARKET, LIMIT
     maker_taker_entry: str = "TAKER"  # MAKER, TAKER
+    account_id: int | None = None
+    fee_config_id: int | None = None
 
 
 class ManualTradeClose(BaseModel):
@@ -74,6 +76,13 @@ class TradeResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
+    account_id: int | None = None
+    signal_event_id: int | None = None
+    status: str | None = None
+    opened_at: datetime | None = None
+    margin_used_usdt: Decimal | None = None
+    capital_before_usdt: Decimal | None = None
+    capital_after_usdt: Decimal | None = None
     source: str
     symbol: str
     market: str

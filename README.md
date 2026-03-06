@@ -119,6 +119,60 @@ Campos esperados: `source` (n8n), `symbol`, `market`, `strategy_family`, `strate
 
 Listado completo en `docs/api-endpoints.md`. Esquema de base de datos en `docs/database-schema.md`.
 
+## Ampliación: Paper Trading con cuentas y ledger
+
+El proyecto incluye una ampliación incremental para convertir la app en un **sistema de paper trading** con cuentas, ledger y señales n8n.
+
+### Migraciones SQL (Supabase)
+
+Ejecutar en el SQL Editor de Supabase **en este orden**:
+
+1. **Esquema base** (si no existe): `docs/supabase-schema.sql`
+2. **Nuevas tablas**: `docs/migrations/001_new_tables.sql` — `paper_accounts`, `account_ledger`, `signal_events`, `backtest_equity_curve`
+3. **ALTER trades**: `docs/migrations/002_alter_trades.sql` — `account_id`, `status`, `margin_used_usdt`, etc.
+4. **ALTER backtest/candles/strategies/fee_configs**: `docs/migrations/003_alter_backtest_candles_strategies_fee.sql`
+5. **RLS**: `docs/migrations/004_rls.sql`
+6. **Seed inicial**: `docs/seeds/001_initial_seed.sql` — una cuenta paper "Main Paper Account" (1000 USDT), fee config por defecto, 3 estrategias
+
+### Nuevos endpoints
+
+- `GET /api/v1/paper-accounts` — Lista cuentas paper
+- `GET /api/v1/paper-accounts/{id}` — Detalle de cuenta
+- `GET /api/v1/analytics/dashboard-summary?account_id=` — Resumen dashboard + métricas de cuenta (capital, equity, margen, fees)
+
+### Edge Functions (Supabase)
+
+Las Edge Functions en `supabase/functions/` actúan como proxy al backend. Configura la variable de entorno `BACKEND_URL` (URL de tu API, p. ej. Railway).
+
+- **get-dashboard-summary** — GET con `?account_id=` opcional
+- **create-manual-trade** — POST con body de creación de trade
+- **close-trade** — POST/PATCH con body `{ trade_id, exit_price, exit_order_type, maker_taker_exit, exit_reason }`
+- **ingest-signal-from-n8n** — POST con payload n8n
+- **run-backtest** — POST con parámetros de backtest
+
+Despliegue (CLI de Supabase):
+
+```bash
+supabase functions deploy get-dashboard-summary
+supabase functions deploy create-manual-trade
+supabase functions deploy close-trade
+supabase functions deploy ingest-signal-from-n8n
+supabase functions deploy run-backtest
+```
+
+### Lógica de negocio (backend)
+
+- **`backend/app/services/trading_capital.py`**: `get_fee_rate`, `calc_entry_fee`, `calc_exit_fee`, `calc_gross_pnl`, `calc_net_pnl`, `calc_margin_used`, `validate_can_open_trade`
+- La validación de margen y la actualización de `paper_accounts` y `account_ledger` al abrir/cerrar trades se pueden conectar en los endpoints de trades usando este módulo (próximo paso incremental).
+
+### Flujo de prueba E2E
+
+1. **Crear cuenta paper** — Ejecutar el seed; la cuenta "Main Paper Account" con 1000 USDT aparecerá en Dashboard (sección Cuenta Paper) y en el selector de Nueva operación.
+2. **Abrir trade manual** — Ir a Nueva operación, seleccionar la cuenta, rellenar símbolo, estrategia, cantidad, precio; revisar el preview (notional, margen, fee, capital disponible); enviar.
+3. **Cerrar trade** — En Histórico, filtrar y abrir una operación abierta; usar "Cerrar" e indicar precio de salida y motivo.
+4. **Recibir señal n8n** — POST a `POST /api/v1/webhook/n8n/trade` (o a la Edge Function `ingest-signal-from-n8n`) con el JSON de ejemplo en `docs/n8n-webhook-payload.json`.
+5. **Ejecutar backtest** — En la pestaña Backtest, elegir estrategia, rango de fechas, capital inicial y lanzar; revisar capital inicial/final, return %, peak equity y drawdown en la tabla.
+
 ## Calidad y extensibilidad
 
 - TypeScript estricto en frontend.

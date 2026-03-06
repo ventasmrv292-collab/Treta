@@ -2,7 +2,7 @@
 from __future__ import annotations
 from datetime import datetime
 from decimal import Decimal
-from sqlalchemy import String, Numeric, Boolean, DateTime, Text, Integer, ForeignKey, func, Index
+from sqlalchemy import String, Numeric, Boolean, DateTime, Text, Integer, BigInteger, ForeignKey, func, Index
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base
 
@@ -11,6 +11,17 @@ class Trade(Base):
     __tablename__ = "trades"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+
+    # Paper account & signal (nullable for legacy trades)
+    account_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("paper_accounts.id"), nullable=True, index=True)
+    signal_event_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("signal_events.id"), nullable=True)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="OPEN", index=True)  # OPEN, CLOSED
+    opened_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    margin_used_usdt: Mapped[Decimal | None] = mapped_column(Numeric(20, 4), nullable=True)
+    capital_before_usdt: Mapped[Decimal | None] = mapped_column(Numeric(20, 4), nullable=True)
+    capital_after_usdt: Mapped[Decimal | None] = mapped_column(Numeric(20, 4), nullable=True)
+    fee_config_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("fee_configs.id"), nullable=True)
+    idempotency_key: Mapped[str | None] = mapped_column(String(128), nullable=True)
 
     # Source & strategy
     source: Mapped[str] = mapped_column(String(32), index=True, nullable=False)  # manual, n8n

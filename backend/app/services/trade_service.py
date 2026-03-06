@@ -30,7 +30,7 @@ async def get_default_fee_engine(session: AsyncSession) -> FeeEngine:
 
 def manual_create_to_trade(d: ManualTradeCreate) -> dict:
     """Convert ManualTradeCreate to Trade ORM kwargs."""
-    return {
+    out = {
         "source": d.source,
         "symbol": d.symbol,
         "market": d.market,
@@ -49,6 +49,11 @@ def manual_create_to_trade(d: ManualTradeCreate) -> dict:
         "stop_loss": d.stop_loss,
         "notes": d.notes,
     }
+    if getattr(d, "account_id", None) is not None:
+        out["account_id"] = d.account_id
+    if getattr(d, "fee_config_id", None) is not None:
+        out["fee_config_id"] = d.fee_config_id
+    return out
 
 
 def n8n_create_to_trade(d: N8nTradeCreate) -> dict:

@@ -62,4 +62,7 @@ class BacktestRunResponse(BaseModel):
     profit_factor: float | None
     max_drawdown_pct: float | None
     created_at: datetime
+    final_capital: Decimal | None = None
+    peak_equity: Decimal | None = None
+    min_equity: Decimal | None = None
     results: list[BacktestResultResponse] = []

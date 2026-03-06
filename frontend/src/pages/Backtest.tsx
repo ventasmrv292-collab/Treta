@@ -197,6 +197,11 @@ export function Backtest() {
                   <th className="pb-2 font-medium">Estrategia</th>
                   <th className="pb-2 font-medium">Intervalo</th>
                   <th className="pb-2 font-medium">Leverage</th>
+                  <th className="pb-2 font-medium">Capital ini.</th>
+                  <th className="pb-2 font-medium">Capital fin.</th>
+                  <th className="pb-2 font-medium">Return %</th>
+                  <th className="pb-2 font-medium">Peak equity</th>
+                  <th className="pb-2 font-medium">Drawdown</th>
                   <th className="pb-2 font-medium">Estado</th>
                   <th className="pb-2 font-medium">Trades</th>
                   <th className="pb-2 font-medium">Net PnL</th>
@@ -204,20 +209,34 @@ export function Backtest() {
                 </tr>
               </thead>
               <tbody>
-                {runs.map((r) => (
-                  <tr key={r.id} className="border-t border-white/5">
-                    <td className="py-2">{format(new Date(r.created_at), 'dd/MM/yy HH:mm')}</td>
-                    <td className="py-2">{r.strategy_name}</td>
-                    <td className="py-2">{r.interval}</td>
-                    <td className="py-2">x{r.leverage}</td>
-                    <td className="py-2">{r.status}</td>
-                    <td className="py-2">{r.total_trades ?? '—'}</td>
-                    <td className={`py-2 font-medium ${r.net_pnl != null && parseFloat(r.net_pnl) >= 0 ? 'text-[var(--positive)]' : 'text-[var(--negative)]'}`}>
-                      {r.net_pnl != null ? `$${parseFloat(r.net_pnl).toFixed(2)}` : '—'}
-                    </td>
-                    <td className="py-2">{r.win_rate != null ? `${r.win_rate.toFixed(1)}%` : '—'}</td>
-                  </tr>
-                ))}
+                {runs.map((r) => {
+                  const init = parseFloat(r.initial_capital)
+                  const final = r.final_capital != null ? parseFloat(r.final_capital) : null
+                  const returnPct = init > 0 && final != null ? (((final - init) / init) * 100) : null
+                  const peak = r.peak_equity != null ? parseFloat(r.peak_equity) : null
+                  const drawdown = r.max_drawdown_pct != null ? r.max_drawdown_pct : null
+                  return (
+                    <tr key={r.id} className="border-t border-white/5">
+                      <td className="py-2">{format(new Date(r.created_at), 'dd/MM/yy HH:mm')}</td>
+                      <td className="py-2">{r.strategy_name}</td>
+                      <td className="py-2">{r.interval}</td>
+                      <td className="py-2">x{r.leverage}</td>
+                      <td className="py-2">${init.toFixed(2)}</td>
+                      <td className="py-2">{final != null ? `$${final.toFixed(2)}` : '—'}</td>
+                      <td className={`py-2 ${returnPct != null ? (returnPct >= 0 ? 'text-[var(--positive)]' : 'text-[var(--negative)]') : ''}`}>
+                        {returnPct != null ? `${returnPct.toFixed(2)}%` : '—'}
+                      </td>
+                      <td className="py-2">{peak != null ? `$${peak.toFixed(2)}` : '—'}</td>
+                      <td className="py-2">{drawdown != null ? `${drawdown.toFixed(2)}%` : '—'}</td>
+                      <td className="py-2">{r.status}</td>
+                      <td className="py-2">{r.total_trades ?? '—'}</td>
+                      <td className={`py-2 font-medium ${r.net_pnl != null && parseFloat(r.net_pnl) >= 0 ? 'text-[var(--positive)]' : 'text-[var(--negative)]'}`}>
+                        {r.net_pnl != null ? `$${parseFloat(r.net_pnl).toFixed(2)}` : '—'}
+                      </td>
+                      <td className="py-2">{r.win_rate != null ? `${r.win_rate.toFixed(1)}%` : '—'}</td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>

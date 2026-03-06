@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { fetchStrategies, createTrade } from '../api/endpoints'
+import { fetchStrategies, fetchPaperAccounts, createTrade } from '../api/endpoints'
 import { useToast } from '../components/Toaster'
-import type { Strategy } from '../types'
+import type { Strategy, PaperAccount } from '../types'
 import type { ManualTradeCreate } from '../types'
 
 const TIMEFRAMES = ['1m', '5m', '15m', '1h']
@@ -15,6 +15,8 @@ export function NewTrade() {
   const navigate = useNavigate()
   const { addToast } = useToast()
   const [strategies, setStrategies] = useState<Strategy[]>([])
+  const [paperAccounts, setPaperAccounts] = useState<PaperAccount[]>([])
+  const [selectedAccountId, setSelectedAccountId] = useState<number | null>(null)
   const [loading, setLoading] = useState(false)
   const [form, setForm] = useState<ManualTradeCreate>({
     source: 'manual',
@@ -38,6 +40,12 @@ export function NewTrade() {
 
   useEffect(() => {
     fetchStrategies().then(setStrategies).catch(() => addToast('Error cargando estrategias', 'error'))
+    fetchPaperAccounts()
+      .then((accs) => {
+        setPaperAccounts(accs)
+        if (accs.length > 0) setSelectedAccountId(accs[0].id)
+      })
+      .catch(() => {})
   }, [addToast])
 
   useEffect(() => {
@@ -57,6 +65,16 @@ export function NewTrade() {
       addToast('Selecciona estrategia', 'error')
       return
     }
+    const acc = paperAccounts.find((a) => a.id === selectedAccountId)
+    if (acc && selectedAccountId != null) {
+      const n = parseFloat(form.quantity) * parseFloat(form.entry_price)
+      const margin = form.leverage ? n / form.leverage : 0
+      const fee = n * 0.0004
+      if (parseFloat(acc.available_balance_usdt) < margin + fee) {
+        addToast('Capital insuficiente en la cuenta paper', 'error')
+        return
+      }
+    }
     setLoading(true)
     try {
       const payload: ManualTradeCreate = {
@@ -64,6 +82,7 @@ export function NewTrade() {
         order_side_entry: form.position_side === 'LONG' ? 'BUY' : 'SELL',
         take_profit: form.take_profit || undefined,
         stop_loss: form.stop_loss || undefined,
+        ...(selectedAccountId != null && { account_id: selectedAccountId }),
       }
       await createTrade(payload)
       addToast('Operación registrada correctamente', 'success')
@@ -269,6 +288,21 @@ export function NewTrade() {
             className="w-full rounded-lg border border-white/10 bg-[var(--surface)] px-3 py-2 text-sm"
           />
         </label>
+        {qty > 0 && entryPrice > 0 && (
+          <div className="rounded-lg border border-white/10 bg-black/20 p-4">
+            <p className="mb-2 text-sm font-medium text-[var(--text-muted)]">Preview</p>
+            <ul className="space-y-1 text-sm">
+              <li>Notional: ${entryNotional.toFixed(2)}</li>
+              <li>Margen usado: ${marginUsed.toFixed(2)}</li>
+              <li>Fee entrada (aprox.): ${entryFee.toFixed(2)}</li>
+              {selectedAccount && (
+                <li className={availableAfter < 0 ? 'text-red-400' : ''}>
+                  Capital disponible después: ${availableAfter.toFixed(2)}
+                </li>
+              )}
+            </ul>
+          </div>
+        )}
         <div className="flex gap-3 pt-2">
           <button
             type="submit"

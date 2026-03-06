@@ -1,3 +1,31 @@
+export interface PaperAccount {
+  id: number
+  name: string
+  base_currency: string
+  initial_balance_usdt: string
+  current_balance_usdt: string
+  available_balance_usdt: string
+  used_margin_usdt: string
+  realized_pnl_usdt: string
+  unrealized_pnl_usdt: string
+  total_fees_usdt: string
+  status: string
+}
+
+export interface DashboardSummary {
+  btc_price?: string | null
+  total_trades: number
+  win_rate: number
+  net_pnl: string
+  gross_pnl: string
+  total_fees: string
+  profit_factor: number
+  pnl_by_strategy: { strategy_name: string; strategy_family: string; net_pnl: number }[]
+  pnl_by_leverage: { leverage: number; net_pnl: number }[]
+  account?: PaperAccount | null
+  equity_usdt?: string | null
+}
+
 export interface Trade {
   id: number
   source: string
@@ -36,6 +64,12 @@ export interface Trade {
   pnl_pct_margin: string | null
   created_at: string
   updated_at: string
+  account_id?: number | null
+  status?: string
+  opened_at?: string
+  margin_used_usdt?: string | null
+  capital_before_usdt?: string | null
+  capital_after_usdt?: string | null
 }
 
 export interface TradeListResponse {
@@ -104,6 +138,8 @@ export interface ManualTradeCreate {
   take_profit?: string | null
   stop_loss?: string | null
   notes?: string | null
+  account_id?: number | null
+  fee_config_id?: number | null
 }
 
 export interface TradeClosePayload {
@@ -136,4 +172,15 @@ export interface BacktestRun {
   profit_factor: number | null
   max_drawdown_pct: number | null
   created_at: string
+  final_capital?: string | null
+  peak_equity?: string | null
+  min_equity?: string | null
+}
+
+export interface BacktestEquityPoint {
+  point_time: string
+  equity_usdt: string
+  balance_usdt: string
+  used_margin_usdt: string
+  drawdown_pct: string
 }
