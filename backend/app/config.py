@@ -1,14 +1,17 @@
 """Application configuration."""
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 def _normalize_database_url(url: str) -> str:
-    """Asegura que la URL use el driver asyncpg (Supabase devuelve postgresql://)."""
-    if not url.strip():
+    """Limpia y convierte postgresql:// a postgresql+asyncpg:// (Supabase/Render)."""
+    if not url or not isinstance(url, str):
+        return url or ""
+    u = url.strip().strip('"').strip("'")
+    if not u:
         return url
-    u = url.strip()
-    if u.startswith("postgresql://") and not u.startswith("postgresql+asyncpg://"):
-        return "postgresql+asyncpg://" + u.split("://", 1)[1]
+    if u.startswith("postgresql://") and "+asyncpg" not in u[:20]:
+        u = "postgresql+asyncpg://" + u.split("://", 1)[1]
     return u
 
 
@@ -17,6 +20,13 @@ class Settings(BaseSettings):
 
     # Database (Render/Supabase suelen dar postgresql://; lo convertimos a postgresql+asyncpg)
     database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/crypto_sim"
+
+    @field_validator("database_url", mode="before")
+    @classmethod
+    def clean_database_url(cls, v: str | None) -> str:
+        if v is None:
+            return "postgresql+asyncpg://postgres:postgres@localhost:5432/crypto_sim"
+        return _normalize_database_url(str(v))
 
     def get_database_url(self) -> str:
         return _normalize_database_url(self.database_url)
@@ -44,5 +54,3 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
-# URL normalizada para SQLAlchemy async (postgresql+asyncpg)
-settings.database_url = settings.get_database_url()
