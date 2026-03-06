@@ -6,6 +6,13 @@ import { TrendingUp, TrendingDown, Activity, DollarSign, Percent } from 'lucide-
 
 const TIMEFRAMES = ['1m', '5m', '15m', '1h'] as const
 
+/** Intervalo de refresco del precio (ms). 60s para no superar rate limit. */
+const PRICE_REFRESH_MS = 60_000
+/** Tras error 502/503, esperar más antes del siguiente intento. */
+const PRICE_BACKOFF_MS = 90_000
+/** Intervalo de refresco del dashboard / métricas (ms). */
+const DASHBOARD_REFRESH_MS = 120_000
+
 export function Dashboard() {
   const [interval, setInterval] = useState<string>('15m')
   const [candles, setCandles] = useState<CandleData[]>([])
@@ -23,6 +30,7 @@ export function Dashboard() {
   const [loading, setLoading] = useState(true)
   const [streamStatus, setStreamStatus] = useState<'idle' | 'loading' | 'ok'>('idle')
 
+  // Carga inicial y al cambiar timeframe: klines + precio + dashboard (una sola rafaga)
   useEffect(() => {
     let cancelled = false
     setLoading(true)
@@ -47,11 +55,30 @@ export function Dashboard() {
     return () => { cancelled = true }
   }, [interval])
 
-  // Refresh price every 30s
+  // Precio: cada 60s; si falla (502/503), siguiente intento en 90s para no saturar
+  useEffect(() => {
+    let timeoutId: ReturnType<typeof setTimeout>
+    const schedule = (delayMs: number) => {
+      timeoutId = setTimeout(() => {
+        fetchPrice('BTCUSDT')
+          .then((r) => {
+            setPrice(r.price)
+            schedule(PRICE_REFRESH_MS)
+          })
+          .catch(() => schedule(PRICE_BACKOFF_MS))
+      }, delayMs)
+    }
+    schedule(PRICE_REFRESH_MS)
+    return () => clearTimeout(timeoutId)
+  }, [])
+
+  // Métricas del dashboard: cada 2 min (no en cada cambio de timeframe)
   useEffect(() => {
     const t = setInterval(() => {
-      fetchPrice('BTCUSDT').then((r) => setPrice(r.price)).catch(() => {})
-    }, 30000)
+      fetchDashboard()
+        .then((dash) => setMetrics(dash))
+        .catch(() => {})
+    }, DASHBOARD_REFRESH_MS)
     return () => clearInterval(t)
   }, [])
 

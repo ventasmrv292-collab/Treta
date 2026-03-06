@@ -22,8 +22,8 @@ COINGECKO_IDS = {"BTCUSDT": "bitcoin", "BTC": "bitcoin"}
 
 # Caché para CoinGecko y evitar 429 Too Many Requests
 _coingecko_cache: dict[tuple[str, str], tuple[Any, float]] = {}
-_PRICE_TTL = 60.0
-_KLINES_TTL = 300.0
+_PRICE_TTL = 120.0   # 2 min
+_KLINES_TTL = 600.0  # 10 min
 
 
 def _cache_get(key: tuple[str, str], ttl: float) -> Any | None:
@@ -59,8 +59,19 @@ def _parse_kline(row: list[Any]) -> dict[str, Any]:
     }
 
 
+async def _price_from_coincap(symbol: str) -> Decimal:
+    """Precio desde CoinCap (fallback cuando CoinGecko da 429)."""
+    # CoinCap: bitcoin -> id "bitcoin"
+    asset_id = "bitcoin" if symbol.upper() in ("BTCUSDT", "BTC") else "bitcoin"
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        r = await client.get(f"https://api.coincap.io/v2/assets/{asset_id}")
+        r.raise_for_status()
+        data = r.json()
+    return Decimal(str(data["data"]["priceUsd"]))
+
+
 async def _price_from_coingecko(symbol: str) -> Decimal:
-    """Precio desde CoinGecko; caché 60s para no superar rate limit."""
+    """Precio desde CoinGecko; caché 2 min para no superar rate limit."""
     key = ("price", symbol.upper())
     cached = _cache_get(key, _PRICE_TTL)
     if cached is not None:
@@ -83,6 +94,13 @@ async def _price_from_coingecko(symbol: str) -> Decimal:
             if stale is not None:
                 logger.warning("CoinGecko 429, devolviendo precio en caché")
                 return stale
+            logger.warning("CoinGecko 429 sin caché, intentando CoinCap")
+            try:
+                price = await _price_from_coincap(symbol)
+                _cache_set(key, price, _PRICE_TTL)
+                return price
+            except Exception as cap_err:
+                logger.warning("CoinCap fallback falló: %s", cap_err)
         raise
 
 
