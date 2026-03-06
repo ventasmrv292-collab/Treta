@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { CandlestickChart } from '../components/CandlestickChart'
 import { fetchKlines, fetchPrice, fetchDashboard } from '../api/endpoints'
+import { WS_BASE } from '../config'
 import type { CandleData } from '../types'
 import { TrendingUp, TrendingDown, Activity, DollarSign, Percent } from 'lucide-react'
 
@@ -19,6 +20,7 @@ export function Dashboard() {
   const [interval, setInterval] = useState<string>('15m')
   const [candles, setCandles] = useState<CandleData[]>([])
   const [price, setPrice] = useState<string | null>(null)
+  const [livePrice, setLivePrice] = useState<number | null>(null)
   const [crosshairPrice, setCrosshairPrice] = useState<number | null>(null)
   const [metrics, setMetrics] = useState<{
     total_trades: number
@@ -57,7 +59,38 @@ export function Dashboard() {
     return () => { cancelled = true }
   }, [interval])
 
-  // Precio: cada 60s; si falla (502/503), siguiente intento en 90s para no saturar
+  // WebSocket: precio en tiempo real (reconexión automática)
+  useEffect(() => {
+    const wsUrl = `${WS_BASE}/api/v1/ws/price`
+    let ws: WebSocket | null = null
+    let reconnectTimer: ReturnType<typeof setTimeout>
+
+    const connect = () => {
+      ws = new WebSocket(wsUrl)
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data) as { price?: string }
+          if (data.price != null) setLivePrice(parseFloat(data.price))
+        } catch {
+          // ignore
+        }
+      }
+      ws.onclose = () => {
+        ws = null
+        reconnectTimer = setTimeout(connect, 3000)
+      }
+      ws.onerror = () => {
+        ws?.close()
+      }
+    }
+    connect()
+    return () => {
+      clearTimeout(reconnectTimer)
+      ws?.close()
+    }
+  }, [])
+
+  // Precio por polling (fallback cuando WS no está disponible)
   useEffect(() => {
     let timeoutId: ReturnType<typeof setTimeout>
     const schedule = (delayMs: number) => {
@@ -94,9 +127,9 @@ export function Dashboard() {
     return () => clearInterval(t)
   }, [])
 
-  // Mismo valor que la línea de precio del gráfico: al pasar el ratón = precio en la vela; si no, cierre de la última vela (o precio API si aún no hay velas)
+  // Precio mostrado: ratón en gráfico > WebSocket en vivo > cierre última vela > polling
   const lastCandleClose = candles.length > 0 ? candles[candles.length - 1].close : null
-  const displayPrice = crosshairPrice ?? lastCandleClose ?? (price ? parseFloat(price) : null)
+  const displayPrice = crosshairPrice ?? livePrice ?? lastCandleClose ?? (price ? parseFloat(price) : null)
 
   return (
     <div className="space-y-6">
@@ -178,6 +211,7 @@ export function Dashboard() {
               data={candles}
               interval={interval}
               onCrosshairMove={setCrosshairPrice}
+              livePrice={livePrice}
             />
           )}
         </div>

@@ -8,3 +8,8 @@ export const API_BASE =
   typeof import.meta.env.VITE_API_BASE_URL === 'string' && import.meta.env.VITE_API_BASE_URL.trim() !== ''
     ? import.meta.env.VITE_API_BASE_URL.replace(/\/$/, '')
     : ''
+
+/** URL base para WebSocket (precio en tiempo real). */
+export const WS_BASE = API_BASE
+  ? (API_BASE.startsWith('https') ? API_BASE.replace(/^https/, 'wss') : API_BASE.replace(/^http/, 'ws'))
+  : 'ws://localhost:8000'

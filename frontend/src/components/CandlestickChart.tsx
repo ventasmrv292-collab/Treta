@@ -7,9 +7,11 @@ interface CandlestickChartProps {
   height?: number
   interval?: string
   onCrosshairMove?: (price: number | null) => void
+  /** Precio en vivo para actualizar la última vela en tiempo real */
+  livePrice?: number | null
 }
 
-export function CandlestickChart({ data, height = 400, interval = '15m', onCrosshairMove }: CandlestickChartProps) {
+export function CandlestickChart({ data, height = 400, interval = '15m', onCrosshairMove, livePrice }: CandlestickChartProps) {
   const chartRef = useRef<HTMLDivElement>(null)
   const chartInstance = useRef<IChartApi | null>(null)
   const seriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null)
@@ -95,6 +97,21 @@ export function CandlestickChart({ data, height = 400, interval = '15m', onCross
       chartInstance.current?.timeScale().fitContent()
     }
   }, [data])
+
+  // Precio en vivo: actualizar solo la última vela para que el gráfico se mueva en tiempo real
+  useEffect(() => {
+    if (livePrice == null || !data.length || !seriesRef.current) return
+    const last = data[data.length - 1]
+    const high = Math.max(last.high, livePrice)
+    const low = Math.min(last.low, livePrice)
+    seriesRef.current.update({
+      time: last.time as unknown as CandlestickData['time'],
+      open: last.open,
+      high,
+      low,
+      close: livePrice,
+    })
+  }, [livePrice, data])
 
   return <div ref={chartRef} style={{ height: `${height}px`, width: '100%' }} />
 }
