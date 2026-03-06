@@ -12,6 +12,8 @@ const PRICE_REFRESH_MS = 60_000
 const PRICE_BACKOFF_MS = 90_000
 /** Intervalo de refresco del dashboard / métricas (ms). */
 const DASHBOARD_REFRESH_MS = 120_000
+/** Intervalo de refresco del gráfico de velas (ms). */
+const CHART_REFRESH_MS = 30_000
 
 export function Dashboard() {
   const [interval, setInterval] = useState<string>('15m')
@@ -71,6 +73,16 @@ export function Dashboard() {
     schedule(PRICE_REFRESH_MS)
     return () => clearTimeout(timeoutId)
   }, [])
+
+  // Gráfico de velas: se actualiza solo cada 30 s
+  useEffect(() => {
+    const t = setInterval(() => {
+      fetchKlines('BTCUSDT', interval, 300)
+        .then((res) => setCandles(res.candles))
+        .catch(() => {})
+    }, CHART_REFRESH_MS)
+    return () => clearInterval(t)
+  }, [interval])
 
   // Métricas del dashboard: cada 2 min (no en cada cambio de timeframe)
   useEffect(() => {
