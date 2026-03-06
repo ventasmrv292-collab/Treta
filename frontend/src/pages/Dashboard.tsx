@@ -6,14 +6,14 @@ import { TrendingUp, TrendingDown, Activity, DollarSign, Percent } from 'lucide-
 
 const TIMEFRAMES = ['1m', '5m', '15m', '1h'] as const
 
-/** Intervalo de refresco del precio (ms). 60s para no superar rate limit. */
-const PRICE_REFRESH_MS = 60_000
+/** Intervalo de refresco del precio (ms). */
+const PRICE_REFRESH_MS = 10_000
 /** Tras error 502/503, esperar más antes del siguiente intento. */
-const PRICE_BACKOFF_MS = 90_000
+const PRICE_BACKOFF_MS = 30_000
 /** Intervalo de refresco del dashboard / métricas (ms). */
 const DASHBOARD_REFRESH_MS = 120_000
 /** Intervalo de refresco del gráfico de velas (ms). */
-const CHART_REFRESH_MS = 30_000
+const CHART_REFRESH_MS = 10_000
 
 export function Dashboard() {
   const [interval, setInterval] = useState<string>('15m')
@@ -94,7 +94,9 @@ export function Dashboard() {
     return () => clearInterval(t)
   }, [])
 
-  const displayPrice = crosshairPrice ?? (price ? parseFloat(price) : null)
+  // Mismo valor que la línea de precio del gráfico: al pasar el ratón = precio en la vela; si no, cierre de la última vela (o precio API si aún no hay velas)
+  const lastCandleClose = candles.length > 0 ? candles[candles.length - 1].close : null
+  const displayPrice = crosshairPrice ?? lastCandleClose ?? (price ? parseFloat(price) : null)
 
   return (
     <div className="space-y-6">
