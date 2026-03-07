@@ -9,23 +9,23 @@ from app.config import settings
 from app.db import init_db
 from app.api.routes import api_router
 from app.services.price_stream import run_price_stream
-from app.services.position_supervisor import run_position_supervisor
+from app.services.scheduler_service import start_scheduler
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
     task_stream = asyncio.create_task(run_price_stream())
-    task_supervisor = asyncio.create_task(run_position_supervisor())
+    task_scheduler = start_scheduler()
     yield
     task_stream.cancel()
-    task_supervisor.cancel()
+    task_scheduler.cancel()
     try:
         await task_stream
     except asyncio.CancelledError:
         pass
     try:
-        await task_supervisor
+        await task_scheduler
     except asyncio.CancelledError:
         pass
 
