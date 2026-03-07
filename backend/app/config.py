@@ -45,17 +45,20 @@ class Settings(BaseSettings):
     binance_futures_ws_url: str = "wss://fstream.binance.com/ws"
     binance_futures_rest_url: str = "https://fapi.binance.com"
 
-    # CORS (en Render definir CORS_ORIGINS=https://treta-ruby.vercel.app)
+    # CORS: orígenes permitidos separados por coma (ej. https://tu-app.vercel.app).
+    # En Railway/Render define CORS_ORIGINS con la URL de tu frontend en Vercel.
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
+
+    # Si True, permite cualquier subdominio de vercel.app (preview y producción).
+    cors_allow_vercel_app: bool = True
 
     @property
     def cors_origins_list(self) -> list[str]:
         origins = [o.strip() for o in self.cors_origins.split(",") if o.strip()]
-        # En Render (PORT inyectado) añadir frontend Vercel si no está ya
-        vercel_origin = "https://treta-ruby.vercel.app"
-        if __import__("os").environ.get("PORT") and vercel_origin not in origins:
-            origins = list(origins) + [vercel_origin]
         return origins
+
+    # Regex para permitir *.vercel.app (usado por el middleware si cors_allow_vercel_app=True).
+    cors_vercel_regex: str = r"https://[a-z0-9-]+\.vercel\.app"
 
 
 settings = Settings()
