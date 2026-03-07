@@ -102,6 +102,13 @@ export const endpoints = {
   supervisor: {
     status: () => '/supervisor/status',
   },
+  scheduler: {
+    status: () => '/scheduler/status',
+  },
+  dashboard: {
+    summary: (accountId?: number) =>
+      accountId != null ? `/dashboard/summary${qs({ account_id: accountId })}` : '/dashboard/summary',
+  },
 }
 
 export async function fetchPrice(symbol: string) {
@@ -334,4 +341,16 @@ export async function fetchSupervisorStatus() {
   const res = await fetch(`${API_V1}${endpoints.supervisor.status()}`)
   if (!res.ok) throw new Error('Failed to fetch supervisor status')
   return res.json() as Promise<SupervisorStatus>
+}
+
+export interface SchedulerStatus {
+  running: boolean
+  started_at: number | null
+  jobs: Record<string, { last_run_at?: number; last_error?: string }>
+}
+
+export async function fetchSchedulerStatus(): Promise<SchedulerStatus> {
+  const res = await fetch(`${API_V1}${endpoints.scheduler.status()}`)
+  if (!res.ok) throw new Error('Failed to fetch scheduler status')
+  return res.json()
 }

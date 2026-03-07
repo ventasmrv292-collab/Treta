@@ -9,14 +9,24 @@ from app.config import settings
 from app.db import init_db
 from app.api.routes import api_router
 from app.services.price_stream import run_price_stream
-from app.services.scheduler_service import start_scheduler
+
+# Si el refactor (scheduler_service) no está desplegado, arrancar solo price stream + supervisor como antes.
+try:
+    from app.services.scheduler_service import start_scheduler
+    _use_scheduler = True
+except ImportError:
+    _use_scheduler = False
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
     task_stream = asyncio.create_task(run_price_stream())
-    task_scheduler = start_scheduler()
+    if _use_scheduler:
+        task_scheduler = start_scheduler()
+    else:
+        from app.services.position_supervisor import run_position_supervisor
+        task_scheduler = asyncio.create_task(run_position_supervisor())
     yield
     task_stream.cancel()
     task_scheduler.cancel()

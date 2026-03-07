@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { CandlestickChart } from '../components/CandlestickChart'
-import { fetchKlines, fetchPrice, fetchDashboard, fetchPaperAccounts, fetchDashboardSummary, fetchTrades, fetchSupervisorStatus, fetchBotLogs } from '../api/endpoints'
+import { fetchKlines, fetchPrice, fetchDashboard, fetchPaperAccounts, fetchDashboardSummary, fetchTrades, fetchSupervisorStatus, fetchSchedulerStatus, fetchBotLogs } from '../api/endpoints'
 import { WS_BASE } from '../config'
 import type { CandleData, PaperAccount, Trade } from '../types'
 import { format } from 'date-fns'
@@ -50,6 +50,7 @@ export function Dashboard() {
   } | null>(null)
   const [recentTrades, setRecentTrades] = useState<Trade[]>([])
   const [supervisorStatus, setSupervisorStatus] = useState<{ running: boolean; last_cycle_at: number | null; check_interval_seconds: number } | null>(null)
+  const [schedulerStatus, setSchedulerStatus] = useState<{ running: boolean; started_at: number | null; jobs: Record<string, { last_run_at?: number; last_error?: string }> } | null>(null)
   const [botLogs, setBotLogs] = useState<{ id: number; level: string; event_type: string; message: string; created_at: string }[]>([])
 
   // Carga inicial: klines, precio, cuentas paper y dashboard (o summary con cuenta)
@@ -172,11 +173,13 @@ export function Dashboard() {
   // Supervisor y bot logs
   useEffect(() => {
     fetchSupervisorStatus().then(setSupervisorStatus).catch(() => setSupervisorStatus(null))
+    fetchSchedulerStatus().then(setSchedulerStatus).catch(() => setSchedulerStatus(null))
     fetchBotLogs({ limit: 15 }).then((logs) => setBotLogs(logs)).catch(() => setBotLogs([]))
   }, [])
   useEffect(() => {
     const t = setInterval(() => {
       fetchSupervisorStatus().then(setSupervisorStatus).catch(() => {})
+      fetchSchedulerStatus().then(setSchedulerStatus).catch(() => {})
       fetchBotLogs({ limit: 15 }).then((logs) => setBotLogs(logs)).catch(() => {})
     }, 30000)
     return () => clearInterval(t)
@@ -395,12 +398,39 @@ export function Dashboard() {
           )}
         </div>
 
-      {/* Estado del supervisor y últimos logs del bot */}
+      {/* Estado del sistema: scheduler, supervisor, última sync velas, última estrategia */}
       <div className="grid gap-4 lg:grid-cols-2">
         <div className="rounded-xl border border-white/10 bg-[var(--surface-muted)] p-4">
           <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold text-[var(--text-muted)]">
+            <Activity className="h-4 w-4" />
+            Scheduler
+          </h3>
+          {schedulerStatus ? (
+            <div className="space-y-1 text-sm">
+              <p>
+                <span className="text-[var(--text-muted)]">Estado: </span>
+                <span className={schedulerStatus.running ? 'text-green-500' : 'text-amber-500'}>
+                  {schedulerStatus.running ? 'Activo' : 'Inactivo'}
+                </span>
+              </p>
+              {schedulerStatus.started_at != null && (
+                <p className="text-[var(--text-muted)]">Iniciado: {format(new Date(schedulerStatus.started_at * 1000), 'HH:mm:ss')}</p>
+              )}
+              {schedulerStatus.jobs?.sync_candles_1m?.last_run_at != null && (
+                <p className="text-[var(--text-muted)]">Última sync velas 1m: {format(new Date(schedulerStatus.jobs.sync_candles_1m.last_run_at * 1000), 'HH:mm:ss')}</p>
+              )}
+              {schedulerStatus.jobs?.run_strategies_1m?.last_run_at != null && (
+                <p className="text-[var(--text-muted)]">Última estrategia 1m: {format(new Date(schedulerStatus.jobs.run_strategies_1m.last_run_at * 1000), 'HH:mm:ss')}</p>
+              )}
+            </div>
+          ) : (
+            <p className="text-sm text-[var(--text-muted)]">No disponible (backend no conectado)</p>
+          )}
+        </div>
+        <div className="rounded-xl border border-white/10 bg-[var(--surface-muted)] p-4">
+          <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold text-[var(--text-muted)]">
             <Bot className="h-4 w-4" />
-            Supervisor del bot
+            Supervisor (TP/SL)
           </h3>
           {supervisorStatus ? (
             <div className="space-y-1 text-sm">
