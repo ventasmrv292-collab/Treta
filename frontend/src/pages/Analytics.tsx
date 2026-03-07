@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react'
-import { api } from '../api/client'
-import { endpoints } from '../api/endpoints'
+import { fetchAnalytics } from '../api/endpoints'
 import { BarChart3, TrendingUp, PieChart } from 'lucide-react'
 
 interface StrategyComparison {
@@ -32,12 +31,8 @@ export function Analytics() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    Promise.all([
-      api.get<StrategyComparison[]>(endpoints.analytics.byStrategy()),
-      api.get<LeverageComparison[]>(endpoints.analytics.byLeverage()),
-      api.get<{ points: { time: string; equity: number }[] }>(endpoints.analytics.equityCurve()),
-    ])
-      .then(([strat, lev, curve]) => {
+    fetchAnalytics()
+      .then(({ byStrategy: strat, byLeverage: lev, equityCurve: curve }) => {
         setByStrategy(strat)
         setByLeverage(lev)
         setEquityCurve(curve.points || [])

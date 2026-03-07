@@ -354,6 +354,7 @@ async def close_trade_and_compute_pnl(
     trade.maker_taker_exit = payload.maker_taker_exit
     trade.exit_reason = payload.exit_reason
     trade.closed_at = closed_at
+    trade.status = "CLOSED"
     trade.entry_notional = res.entry_notional
     trade.exit_notional = res.exit_notional
     trade.entry_fee = res.entry_fee

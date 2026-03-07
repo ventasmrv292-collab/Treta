@@ -1,4 +1,4 @@
-import { API_BASE } from '../config'
+import { API_BASE, USE_SUPABASE, SUPABASE_URL, SUPABASE_ANON_KEY } from '../config'
 import type {
   Trade,
   TradeListResponse,
@@ -17,6 +17,18 @@ import type {
 } from '../types'
 
 const API_V1 = `${API_BASE}/api/v1`
+
+function supabaseFetch(path: string, options: RequestInit = {}) {
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) throw new Error('Supabase no configurado')
+  const url = path.startsWith('http') ? path : `${SUPABASE_URL}${path}`
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+    apikey: SUPABASE_ANON_KEY,
+    'Content-Type': 'application/json',
+    ...(options.headers as Record<string, string>),
+  }
+  return fetch(url, { ...options, headers })
+}
 
 const qs = (params: Record<string, string | number | boolean | undefined>) => {
   const s = new URLSearchParams()
@@ -105,6 +117,35 @@ export async function fetchKlines(symbol: string, interval: string, limit = 300)
 }
 
 export async function fetchTrades(params: Parameters<typeof endpoints.trades.list>[0]) {
+  if (USE_SUPABASE) {
+    const page = params?.page ?? 1
+    const size = params?.size ?? 20
+    const from = (page - 1) * size
+    const searchParams = new URLSearchParams()
+    searchParams.set('select', '*')
+    searchParams.set('order', 'created_at.desc')
+    searchParams.set('offset', String(from))
+    searchParams.set('limit', String(size))
+    if (params?.symbol) searchParams.set('symbol', `eq.${params.symbol}`)
+    if (params?.strategy_family) searchParams.set('strategy_family', `eq.${params.strategy_family}`)
+    if (params?.strategy_name) searchParams.set('strategy_name', `eq.${params.strategy_name}`)
+    if (params?.source) searchParams.set('source', `eq.${params.source}`)
+    if (params?.position_side) searchParams.set('position_side', `eq.${params.position_side}`)
+    if (params?.leverage != null) searchParams.set('leverage', `eq.${params.leverage}`)
+    if (params?.closed_only) searchParams.set('closed_at', 'not.is.null')
+    const res = await supabaseFetch(`/rest/v1/trades?${searchParams}`, {
+      headers: { Prefer: 'count=exact' },
+    })
+    if (!res.ok) throw new Error('Failed to fetch trades')
+    const items = (await res.json()) as Trade[]
+    const contentRange = res.headers.get('Content-Range')
+    const total = contentRange ? parseInt(contentRange.split('/')[1] ?? String(items.length), 10) : items.length
+    let filtered = items
+    if (params?.winners_only) filtered = items.filter((t) => t.net_pnl_usdt != null && Number(t.net_pnl_usdt) > 0)
+    if (params?.losers_only) filtered = items.filter((t) => t.net_pnl_usdt != null && Number(t.net_pnl_usdt) < 0)
+    const pages = Math.ceil(total / size) || 1
+    return { items: filtered, total, page, size, pages } as TradeListResponse
+  }
   const res = await fetch(`${API_V1}${endpoints.trades.list(params)}`)
   if (!res.ok) throw new Error('Failed to fetch trades')
   return res.json() as Promise<TradeListResponse>
@@ -116,25 +157,76 @@ export async function fetchDashboard() {
   return res.json() as Promise<DashboardMetrics>
 }
 
+/** Analíticas (by-strategy, by-leverage, equity-curve). Con Supabase usa la Edge Function get-analytics. */
+export async function fetchAnalytics(): Promise<{
+  byStrategy: { strategy_name: string; strategy_family: string; total_trades: number; net_pnl: string; gross_pnl: string; total_fees: string; win_rate: number; profit_factor: number; avg_win: string; avg_loss: string; expectancy: string }[]
+  byLeverage: { leverage: number; total_trades: number; net_pnl: string; win_rate: number; total_fees: string }[]
+  equityCurve: { points: { time: string | null; equity: number }[] }
+}> {
+  if (USE_SUPABASE) {
+    const res = await supabaseFetch('/functions/v1/get-analytics')
+    if (!res.ok) throw new Error('Failed to fetch analytics')
+    const data = await res.json()
+    return {
+      byStrategy: data.byStrategy ?? [],
+      byLeverage: data.byLeverage ?? [],
+      equityCurve: data.equityCurve ?? { points: [] },
+    }
+  }
+  const [byStrategy, byLeverage, equityCurve] = await Promise.all([
+    fetch(`${API_V1}${endpoints.analytics.byStrategy()}`).then((r) => r.json()),
+    fetch(`${API_V1}${endpoints.analytics.byLeverage()}`).then((r) => r.json()),
+    fetch(`${API_V1}${endpoints.analytics.equityCurve()}`).then((r) => r.json()),
+  ])
+  return { byStrategy, byLeverage, equityCurve }
+}
+
 export async function fetchPaperAccounts() {
+  if (USE_SUPABASE) {
+    const res = await supabaseFetch('/rest/v1/paper_accounts?select=*&order=id')
+    if (!res.ok) throw new Error('Failed to fetch paper accounts')
+    return res.json() as Promise<PaperAccount[]>
+  }
   const res = await fetch(`${API_V1}${endpoints.paperAccounts.list()}`)
   if (!res.ok) throw new Error('Failed to fetch paper accounts')
   return res.json() as Promise<PaperAccount[]>
 }
 
 export async function fetchDashboardSummary(accountId?: number) {
+  if (USE_SUPABASE) {
+    const q = accountId != null ? `?account_id=${accountId}` : ''
+    const res = await supabaseFetch(`/functions/v1/get-dashboard-summary${q}`)
+    if (!res.ok) throw new Error('Failed to fetch dashboard summary')
+    return res.json() as Promise<DashboardSummary>
+  }
   const res = await fetch(`${API_V1}${endpoints.analytics.dashboardSummary(accountId)}`)
   if (!res.ok) throw new Error('Failed to fetch dashboard summary')
   return res.json() as Promise<DashboardSummary>
 }
 
 export async function fetchStrategies() {
+  if (USE_SUPABASE) {
+    const res = await supabaseFetch('/rest/v1/strategies?select=*&order=id')
+    if (!res.ok) throw new Error('Failed to fetch strategies')
+    return res.json() as Promise<Strategy[]>
+  }
   const res = await fetch(`${API_V1}${endpoints.strategies.list()}`)
   if (!res.ok) throw new Error('Failed to fetch strategies')
   return res.json() as Promise<Strategy[]>
 }
 
 export async function createTrade(payload: ManualTradeCreate) {
+  if (USE_SUPABASE) {
+    const res = await supabaseFetch('/functions/v1/create-manual-trade', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    })
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}))
+      throw new Error((err as { error?: string }).error || 'Failed to create trade')
+    }
+    return res.json() as Promise<Trade>
+  }
   const res = await fetch(`${API_V1}${endpoints.trades.create()}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -148,6 +240,17 @@ export async function createTrade(payload: ManualTradeCreate) {
 }
 
 export async function closeTrade(id: number, payload: TradeClosePayload) {
+  if (USE_SUPABASE) {
+    const res = await supabaseFetch('/functions/v1/close-trade', {
+      method: 'POST',
+      body: JSON.stringify({ trade_id: id, ...payload }),
+    })
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}))
+      throw new Error((err as { error?: string }).error || 'Failed to close trade')
+    }
+    return res.json() as Promise<Trade>
+  }
   const res = await fetch(`${API_V1}${endpoints.trades.close(id)}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
@@ -173,6 +276,17 @@ export async function runBacktest(payload: {
   fee_profile?: string
   slippage_bps?: number
 }) {
+  if (USE_SUPABASE) {
+    const res = await supabaseFetch('/functions/v1/run-backtest', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    })
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}))
+      throw new Error((err as { error?: string }).error || 'Backtest failed')
+    }
+    return res.json() as Promise<BacktestRun>
+  }
   const res = await fetch(`${API_V1}${endpoints.backtest.run()}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
