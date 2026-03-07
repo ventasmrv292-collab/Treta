@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { fetchAnalytics } from '../api/endpoints'
+import { USE_SUPABASE } from '../config'
 import { BarChart3, TrendingUp, PieChart } from 'lucide-react'
 
 interface StrategyComparison {
@@ -79,7 +80,20 @@ export function Analytics() {
 
   return (
     <div className="space-y-8">
-      <h2 className="text-xl font-semibold">Analíticas y comparativas</h2>
+      <div className="flex flex-wrap items-center gap-2">
+        <h2 className="text-xl font-semibold">Analíticas y comparativas</h2>
+        <span
+          className="rounded-full px-2.5 py-0.5 text-xs font-medium"
+          title={USE_SUPABASE ? 'Datos desde Supabase (Edge Function get-analytics)' : 'Datos desde el backend API (Railway)'}
+          style={{
+            backgroundColor: USE_SUPABASE ? 'var(--accent)' : 'var(--text-muted)',
+            color: 'white',
+            opacity: 0.9,
+          }}
+        >
+          {USE_SUPABASE ? 'Supabase' : 'API'}
+        </span>
+      </div>
 
       <section className="rounded-xl border border-white/10 bg-[var(--surface-muted)] p-6">
         <h3 className="mb-4 flex items-center gap-2 text-sm font-semibold text-[var(--text-muted)]">
