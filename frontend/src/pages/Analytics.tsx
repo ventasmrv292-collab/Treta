@@ -29,22 +29,50 @@ export function Analytics() {
   const [byLeverage, setByLeverage] = useState<LeverageComparison[]>([])
   const [equityCurve, setEquityCurve] = useState<{ time: string; equity: number }[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => {
+  const load = () => {
+    setError(null)
+    setLoading(true)
     fetchAnalytics()
       .then(({ byStrategy: strat, byLeverage: lev, equityCurve: curve }) => {
-        setByStrategy(strat)
-        setByLeverage(lev)
-        setEquityCurve(curve.points || [])
+        setByStrategy(strat ?? [])
+        setByLeverage(lev ?? [])
+        setEquityCurve(curve?.points ?? [])
       })
-      .catch(() => {})
+      .catch((e) => {
+        setError(e instanceof Error ? e.message : 'No se pudieron cargar las analíticas')
+      })
       .finally(() => setLoading(false))
+  }
+
+  useEffect(() => {
+    load()
   }, [])
 
   if (loading) {
     return (
       <div className="flex h-64 items-center justify-center text-[var(--text-muted)]">
         Cargando analíticas...
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="space-y-8">
+        <h2 className="text-xl font-semibold">Analíticas y comparativas</h2>
+        <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-6 text-sm text-red-200">
+          <p className="font-medium">Error al cargar</p>
+          <p className="mt-1 text-[var(--text-muted)]">{error}</p>
+          <button
+            type="button"
+            onClick={load}
+            className="mt-4 rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+          >
+            Reintentar
+          </button>
+        </div>
       </div>
     )
   }
@@ -59,7 +87,7 @@ export function Analytics() {
           PnL por estrategia
         </h3>
         {byStrategy.length === 0 ? (
-          <p className="text-sm text-[var(--text-muted)]">Sin datos de operaciones cerradas.</p>
+          <p className="text-sm text-[var(--text-muted)]">Sin datos de operaciones cerradas. Cierra algunas operaciones para ver PnL por estrategia.</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -76,7 +104,7 @@ export function Analytics() {
               </thead>
               <tbody>
                 {byStrategy.map((s) => (
-                  <tr key={s.strategy_name} className="border-t border-white/5">
+                  <tr key={`${s.strategy_family}|${s.strategy_name}`} className="border-t border-white/5">
                     <td className="py-2">{s.strategy_name}</td>
                     <td className="py-2">{s.strategy_family}</td>
                     <td className="py-2">{s.total_trades}</td>
@@ -100,7 +128,7 @@ export function Analytics() {
           Comparativa x10 vs x20
         </h3>
         {byLeverage.length === 0 ? (
-          <p className="text-sm text-[var(--text-muted)]">Sin datos.</p>
+          <p className="text-sm text-[var(--text-muted)]">Sin datos por apalancamiento. Cierra operaciones con x10/x20 para ver la comparativa.</p>
         ) : (
           <div className="grid gap-4 sm:grid-cols-2">
             {byLeverage.map((l) => (
@@ -120,7 +148,7 @@ export function Analytics() {
           Curva de equity (PnL acumulado)
         </h3>
         {equityCurve.length === 0 ? (
-          <p className="text-sm text-[var(--text-muted)]">Sin datos de cierres.</p>
+          <p className="text-sm text-[var(--text-muted)]">Sin datos de cierres. La curva se construye con el PnL acumulado de cada operación cerrada.</p>
         ) : (
           <div className="h-64 overflow-x-auto">
             <div className="flex h-full min-w-[400px] items-end gap-0.5">

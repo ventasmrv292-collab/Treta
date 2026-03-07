@@ -5,6 +5,67 @@ import { corsHeaders } from "../_shared/cors.ts";
 const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
 const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
+function round2(n: number) {
+  return Math.round(n * 100) / 100;
+}
+
+function mapRpcToFrontend(rpc: {
+  by_strategy?: Array<{
+    strategy_family: string;
+    strategy_name: string;
+    total_trades: number;
+    total_net_pnl: number;
+    avg_net_pnl: number;
+    total_gross_pnl: number;
+    total_fees: number;
+    win_rate: number;
+    profit_factor: number;
+    avg_win: number;
+    avg_loss: number;
+  }>;
+  by_leverage?: Array<{
+    leverage: number;
+    total_trades: number;
+    total_net_pnl: number;
+    avg_net_pnl: number;
+    total_fees: number;
+    win_rate: number;
+  }>;
+  equity_curve?: Array<{ closed_at: string | null; cumulative_net_pnl: number }>;
+}) {
+  const byStrategy = (rpc.by_strategy ?? []).map((s) => {
+    const winPct = (s.win_rate ?? 0) / 100;
+    const expectancy = s.total_trades
+      ? (s.avg_win ?? 0) * winPct + (s.avg_loss ?? 0) * (1 - winPct)
+      : 0;
+    return {
+      strategy_name: s.strategy_name,
+      strategy_family: s.strategy_family,
+      total_trades: s.total_trades,
+      net_pnl: String(round2(s.total_net_pnl ?? 0)),
+      gross_pnl: String(round2(s.total_gross_pnl ?? 0)),
+      total_fees: String(round2(s.total_fees ?? 0)),
+      win_rate: round2(s.win_rate ?? 0),
+      profit_factor: round2(s.profit_factor ?? 0),
+      avg_win: String(round2(s.avg_win ?? 0)),
+      avg_loss: String(round2(s.avg_loss ?? 0)),
+      expectancy: String(round2(expectancy)),
+    };
+  });
+  const byLeverage = (rpc.by_leverage ?? []).map((l) => ({
+    leverage: l.leverage,
+    total_trades: l.total_trades,
+    net_pnl: String(round2(l.total_net_pnl ?? 0)),
+    win_rate: round2(l.win_rate ?? 0),
+    total_fees: String(round2(l.total_fees ?? 0)),
+  }));
+  const points = (rpc.equity_curve ?? []).map((p) => ({
+    time: p.closed_at ? new Date(p.closed_at).toISOString() : null,
+    equity: round2(p.cumulative_net_pnl ?? 0),
+  }));
+  return { byStrategy, byLeverage, equityCurve: { points } };
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "GET") {
@@ -17,6 +78,26 @@ serve(async (req) => {
   const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
   try {
+    const { data: rpcData, error: rpcErr } = await supabase.rpc("get_analytics");
+
+    if (!rpcErr && rpcData != null && typeof rpcData === "object") {
+      const payload = rpcData as {
+        by_strategy?: unknown[];
+        by_leverage?: unknown[];
+        equity_curve?: Array<{ closed_at: string | null; cumulative_net_pnl: number }>;
+      };
+      const { byStrategy, byLeverage, equityCurve } = mapRpcToFrontend({
+        by_strategy: payload.by_strategy as Parameters<typeof mapRpcToFrontend>[0]["by_strategy"],
+        by_leverage: payload.by_leverage as Parameters<typeof mapRpcToFrontend>[0]["by_leverage"],
+        equity_curve: payload.equity_curve,
+      });
+      return new Response(
+        JSON.stringify({ byStrategy, byLeverage, equityCurve }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 }
+      );
+    }
+
+    // Fallback: compute from trades (si la migración get_analytics no está aplicada)
     const { data: trades, error: tradesErr } = await supabase
       .from("trades")
       .select("id, strategy_name, strategy_family, leverage, closed_at, net_pnl_usdt, gross_pnl_usdt, entry_fee, exit_fee")
@@ -119,14 +200,14 @@ serve(async (req) => {
         strategy_name: s.strategy_name,
         strategy_family: s.strategy_family,
         total_trades: s.total_trades,
-        net_pnl: String(Math.round(s.net_pnl * 100) / 100),
-        gross_pnl: String(Math.round(s.gross_pnl * 100) / 100),
-        total_fees: String(Math.round(s.fees * 100) / 100),
-        win_rate: Math.round(winRate * 100) / 100,
-        profit_factor: Math.round(profitFactor * 10000) / 10000,
-        avg_win: String(Math.round(avgWin * 100) / 100),
-        avg_loss: String(Math.round(avgLoss * 100) / 100),
-        expectancy: String(Math.round(expectancy * 100) / 100),
+        net_pnl: String(round2(s.net_pnl)),
+        gross_pnl: String(round2(s.gross_pnl)),
+        total_fees: String(round2(s.fees)),
+        win_rate: round2(winRate),
+        profit_factor: round2(profitFactor),
+        avg_win: String(round2(avgWin)),
+        avg_loss: String(round2(avgLoss)),
+        expectancy: String(round2(expectancy)),
       };
     });
 
@@ -136,9 +217,9 @@ serve(async (req) => {
       return {
         leverage: l.leverage,
         total_trades: l.total_trades,
-        net_pnl: String(Math.round(l.net_pnl * 100) / 100),
-        win_rate: Math.round(winRate * 100) / 100,
-        total_fees: String(Math.round(l.fees * 100) / 100),
+        net_pnl: String(round2(l.net_pnl)),
+        win_rate: round2(winRate),
+        total_fees: String(round2(l.fees)),
       };
     });
 
@@ -147,7 +228,7 @@ serve(async (req) => {
       cum += Number(t.net_pnl_usdt ?? 0);
       return {
         time: t.closed_at ? new Date(t.closed_at).toISOString() : null,
-        equity: Math.round(cum * 100) / 100,
+        equity: round2(cum),
       };
     });
 
