@@ -10,6 +10,7 @@ import {
   PanelLeft,
   Sun,
   Moon,
+  HelpCircle,
 } from 'lucide-react'
 import { clsx } from 'clsx'
 
@@ -19,6 +20,7 @@ const nav = [
   { to: '/history', label: 'Histórico', icon: History },
   { to: '/analytics', label: 'Analíticas', icon: BarChart3 },
   { to: '/backtest', label: 'Backtest', icon: FlaskConical },
+  { to: '/ayuda', label: 'Cómo funciona', icon: HelpCircle },
 ]
 
 export function Layout() {

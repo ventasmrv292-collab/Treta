@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { CandlestickChart } from '../components/CandlestickChart'
 import { fetchKlines, fetchPrice, fetchDashboard, fetchPaperAccounts, fetchDashboardSummary, fetchTrades, fetchSupervisorStatus, fetchSchedulerStatus, fetchBotLogs } from '../api/endpoints'
+import { EventExplanationModal } from '../components/EventExplanationModal'
+import { getEventExplanation } from '../constants/eventExplanations'
 import { WS_BASE } from '../config'
 import type { CandleData, PaperAccount, Trade } from '../types'
 import { format } from 'date-fns'
@@ -52,6 +54,7 @@ export function Dashboard() {
   const [supervisorStatus, setSupervisorStatus] = useState<{ running: boolean; last_cycle_at: number | null; check_interval_seconds: number } | null>(null)
   const [schedulerStatus, setSchedulerStatus] = useState<{ running: boolean; started_at: number | null; jobs: Record<string, { last_run_at?: number; last_error?: string }> } | null>(null)
   const [botLogs, setBotLogs] = useState<{ id: number; level: string; event_type: string; message: string; created_at: string }[]>([])
+  const [eventTypeForHelp, setEventTypeForHelp] = useState<string | null>(null)
 
   // Carga inicial: klines, precio, cuentas paper y dashboard (o summary con cuenta)
   useEffect(() => {
@@ -459,16 +462,25 @@ export function Dashboard() {
           <div className="max-h-32 overflow-y-auto space-y-1 text-xs">
             {botLogs.length === 0 && <p className="text-[var(--text-muted)]">Sin logs recientes</p>}
             {botLogs.map((log) => (
-              <div key={log.id} className="flex flex-wrap gap-1 border-b border-white/5 py-0.5">
+              <div key={log.id} className="flex flex-wrap gap-1 border-b border-white/5 py-0.5 items-center">
                 <span className="text-[var(--text-muted)] shrink-0">{format(new Date(log.created_at), 'HH:mm:ss')}</span>
-                <span className={log.level === 'ERROR' ? 'text-red-400' : log.level === 'WARN' ? 'text-amber-400' : ''}>
+                <button
+                  type="button"
+                  onClick={() => setEventTypeForHelp(log.event_type)}
+                  className={log.level === 'ERROR' ? 'text-red-400 hover:underline' : log.level === 'WARN' ? 'text-amber-400 hover:underline' : 'text-[var(--accent)] hover:underline'}
+                  title={getEventExplanation(log.event_type) ? 'Clic para ver qué significa' : undefined}
+                >
                   [{log.event_type}]
-                </span>
+                </button>
                 <span className="truncate">{log.message}</span>
               </div>
             ))}
           </div>
+          {eventTypeForHelp != null && (
+            <EventExplanationModal eventType={eventTypeForHelp} onClose={() => setEventTypeForHelp(null)} />
+          )}
         </div>
+      </div>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
