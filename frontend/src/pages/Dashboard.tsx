@@ -481,7 +481,6 @@ export function Dashboard() {
           )}
         </div>
       </div>
-      </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2 rounded-xl border border-white/10 bg-[var(--surface-muted)] p-4">
