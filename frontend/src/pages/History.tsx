@@ -216,43 +216,43 @@ export function History() {
                 </td>
               </tr>
             )}
-            {trades.map((t) => (
-              <tr key={t.id} className="border-b border-white/5 hover:bg-white/5">
-                <td className="p-3">{format(new Date(t.created_at), 'dd/MM/yy HH:mm')}</td>
-                <td className="p-3">{t.symbol}</td>
-                <td className="p-3">{t.source}</td>
-                <td className="p-3">{t.status ?? (t.closed_at ? 'CLOSED' : 'OPEN')}</td>
-                <td className="p-3">{t.account_id ?? '—'}</td>
-                <td className="p-3">{t.margin_used_usdt != null ? `$${parseFloat(t.margin_used_usdt).toFixed(2)}` : '—'}</td>
-                <td className="p-3">{t.capital_before_usdt != null ? `$${parseFloat(t.capital_before_usdt).toFixed(2)}` : '—'}</td>
-                <td className="p-3">{t.capital_after_usdt != null ? `$${parseFloat(t.capital_after_usdt).toFixed(2)}` : '—'}</td>
-                <td className="p-3">{t.strategy_name}</td>
-                <td className="p-3">{t.timeframe}</td>
-                <td className="p-3">{t.position_side}</td>
-                <td className="p-3">{t.entry_price}</td>
-                <td className="p-3">{t.exit_price ?? '—'}</td>
-                <td className="p-3" title="Take profit">{t.take_profit ?? '—'}</td>
-                <td className="p-3" title="Stop loss">{t.stop_loss ?? '—'}</td>
-                <td className="p-3">x{t.leverage}</td>
-                <td className="p-3">{t.quantity}</td>
-                <td className="p-3">{t.entry_fee != null ? parseFloat(t.entry_fee).toFixed(4) : '—'}</td>
-                <td className="p-3">{t.exit_fee != null ? parseFloat(t.exit_fee).toFixed(4) : '—'}</td>
-                <td className={`p-3 font-medium ${t.net_pnl_usdt != null && parseFloat(t.net_pnl_usdt) >= 0 ? 'text-[var(--positive)]' : 'text-[var(--negative)]'}`}>
-                  {t.closed_at && t.net_pnl_usdt != null
-                    ? `$${parseFloat(t.net_pnl_usdt).toFixed(2)}`
-                    : !t.closed_at && currentPrice != null && t.symbol === 'BTCUSDT'
-                      ? `~ $${unrealizedPnl(t, currentPrice).toFixed(2)} (abierta)`
+            {trades.map((trade) => (
+              <tr key={trade.id} className="border-b border-white/5 hover:bg-white/5">
+                <td className="p-3">{format(new Date(trade.created_at), 'dd/MM/yy HH:mm')}</td>
+                <td className="p-3">{trade.symbol}</td>
+                <td className="p-3">{trade.source}</td>
+                <td className="p-3">{trade.status ?? (trade.closed_at ? 'CLOSED' : 'OPEN')}</td>
+                <td className="p-3">{trade.account_id ?? '—'}</td>
+                <td className="p-3">{trade.margin_used_usdt != null ? `$${parseFloat(trade.margin_used_usdt).toFixed(2)}` : '—'}</td>
+                <td className="p-3">{trade.capital_before_usdt != null ? `$${parseFloat(trade.capital_before_usdt).toFixed(2)}` : '—'}</td>
+                <td className="p-3">{trade.capital_after_usdt != null ? `$${parseFloat(trade.capital_after_usdt).toFixed(2)}` : '—'}</td>
+                <td className="p-3">{trade.strategy_name}</td>
+                <td className="p-3">{trade.timeframe}</td>
+                <td className="p-3">{trade.position_side}</td>
+                <td className="p-3">{trade.entry_price}</td>
+                <td className="p-3">{trade.exit_price ?? '—'}</td>
+                <td className="p-3" title="Take profit">{trade.take_profit ?? '—'}</td>
+                <td className="p-3" title="Stop loss">{trade.stop_loss ?? '—'}</td>
+                <td className="p-3">x{trade.leverage}</td>
+                <td className="p-3">{trade.quantity}</td>
+                <td className="p-3">{trade.entry_fee != null ? parseFloat(trade.entry_fee).toFixed(4) : '—'}</td>
+                <td className="p-3">{trade.exit_fee != null ? parseFloat(trade.exit_fee).toFixed(4) : '—'}</td>
+                <td className={`p-3 font-medium ${trade.net_pnl_usdt != null && parseFloat(trade.net_pnl_usdt) >= 0 ? 'text-[var(--positive)]' : 'text-[var(--negative)]'}`}>
+                  {trade.closed_at && trade.net_pnl_usdt != null
+                    ? `$${parseFloat(trade.net_pnl_usdt).toFixed(2)}`
+                    : !trade.closed_at && currentPrice != null && trade.symbol === 'BTCUSDT'
+                      ? `~ $${unrealizedPnl(trade, currentPrice).toFixed(2)} (abierta)`
                       : '—'}
                 </td>
-                <td className="p-3">{t.pnl_pct_notional != null ? `${parseFloat(t.pnl_pct_notional).toFixed(2)}%` : '—'}</td>
-                <td className="p-3">{t.exit_reason ?? '—'}</td>
+                <td className="p-3">{trade.pnl_pct_notional != null ? `${parseFloat(trade.pnl_pct_notional).toFixed(2)}%` : '—'}</td>
+                <td className="p-3">{trade.exit_reason ?? '—'}</td>
                 <td className="p-3">
-                  {!t.closed_at && (
+                  {!trade.closed_at && (
                     <button
                       type="button"
                       onClick={() => {
-                        const precioActual = t.symbol === 'BTCUSDT' && currentPrice != null ? currentPrice.toFixed(2) : ''
-                        setClosingId(t.id)
+                        const precioActual = trade.symbol === 'BTCUSDT' && currentPrice != null ? currentPrice.toFixed(2) : ''
+                        setClosingId(trade.id)
                         setCloseForm({ exit_price: precioActual, exit_order_type: 'MARKET', maker_taker_exit: 'TAKER', exit_reason: '' })
                       }}
                       className="rounded bg-[var(--accent)]/80 px-2 py-1 text-xs font-medium hover:bg-[var(--accent)]"
@@ -267,7 +267,7 @@ export function History() {
         </table>
       </div>
       {closingId != null && (() => {
-        const closingTrade = trades.find((t) => t.id === closingId)
+        const closingTrade = trades.find((tr) => tr.id === closingId)
         return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
           <div className="w-full max-w-md rounded-xl border border-white/10 bg-[var(--surface-muted)] p-6">

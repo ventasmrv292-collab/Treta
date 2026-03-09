@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { fetchAnalytics } from '../api/endpoints'
 import { USE_SUPABASE } from '../config'
+import { useI18n } from '../contexts/I18nContext'
 import { BarChart3, TrendingUp, PieChart } from 'lucide-react'
 
 interface StrategyComparison {
@@ -74,6 +75,7 @@ function EquityCurveChart({ points }: { points: { time: string; equity: number }
 }
 
 export function Analytics() {
+  const { t } = useI18n()
   const [byStrategy, setByStrategy] = useState<StrategyComparison[]>([])
   const [byLeverage, setByLeverage] = useState<LeverageComparison[]>([])
   const [equityCurve, setEquityCurve] = useState<{ time: string; equity: number }[]>([])
@@ -102,7 +104,7 @@ export function Analytics() {
   if (loading) {
     return (
       <div className="flex h-64 items-center justify-center text-[var(--text-muted)]">
-        Cargando analíticas...
+        {t('analytics.loading')}
       </div>
     )
   }
@@ -110,16 +112,16 @@ export function Analytics() {
   if (error) {
     return (
       <div className="space-y-8">
-        <h2 className="text-xl font-semibold">Analíticas y comparativas</h2>
+        <h2 className="text-xl font-semibold">{t('analytics.title')}</h2>
         <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-6 text-sm text-red-200">
-          <p className="font-medium">Error al cargar</p>
+          <p className="font-medium">{t('analytics.errorTitle')}</p>
           <p className="mt-1 text-[var(--text-muted)]">{error}</p>
           <button
             type="button"
             onClick={load}
             className="mt-4 rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:opacity-90"
           >
-            Reintentar
+            {t('analytics.retry')}
           </button>
         </div>
       </div>
@@ -129,7 +131,7 @@ export function Analytics() {
   return (
     <div className="space-y-8">
       <div className="flex flex-wrap items-center gap-2">
-        <h2 className="text-xl font-semibold">Analíticas y comparativas</h2>
+        <h2 className="text-xl font-semibold">{t('analytics.title')}</h2>
         <span
           className="rounded-full px-2.5 py-0.5 text-xs font-medium"
           title={USE_SUPABASE ? 'Datos desde Supabase (Edge Function get-analytics)' : 'Datos desde el backend API (Railway)'}
@@ -139,29 +141,29 @@ export function Analytics() {
             opacity: 0.9,
           }}
         >
-          {USE_SUPABASE ? 'Supabase' : 'API'}
+          {USE_SUPABASE ? t('analytics.supabase') : t('analytics.api')}
         </span>
       </div>
 
       <section className="rounded-xl border border-white/10 bg-[var(--surface-muted)] p-6">
         <h3 className="mb-4 flex items-center gap-2 text-sm font-semibold text-[var(--text-muted)]">
           <BarChart3 className="h-4 w-4" />
-          PnL por estrategia
+          {t('analytics.pnlByStrategy')}
         </h3>
         {byStrategy.length === 0 ? (
-          <p className="text-sm text-[var(--text-muted)]">Sin datos de operaciones cerradas. Cierra algunas operaciones para ver PnL por estrategia.</p>
+          <p className="text-sm text-[var(--text-muted)]">{t('analytics.noDataStrategy')}</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-left text-[var(--text-muted)]">
-                  <th className="pb-2 font-medium">Estrategia</th>
-                  <th className="pb-2 font-medium">Familia</th>
-                  <th className="pb-2 font-medium">Trades</th>
-                  <th className="pb-2 font-medium">Net PnL</th>
-                  <th className="pb-2 font-medium">Fees</th>
-                  <th className="pb-2 font-medium">Win rate %</th>
-                  <th className="pb-2 font-medium">Profit factor</th>
+                  <th className="pb-2 font-medium">{t('analytics.strategy')}</th>
+                  <th className="pb-2 font-medium">{t('analytics.family')}</th>
+                  <th className="pb-2 font-medium">{t('analytics.trades')}</th>
+                  <th className="pb-2 font-medium">{t('analytics.netPnl')}</th>
+                  <th className="pb-2 font-medium">{t('analytics.fees')}</th>
+                  <th className="pb-2 font-medium">{t('analytics.winRatePct')}</th>
+                  <th className="pb-2 font-medium">{t('analytics.profitFactor')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -187,17 +189,17 @@ export function Analytics() {
       <section className="rounded-xl border border-white/10 bg-[var(--surface-muted)] p-6">
         <h3 className="mb-4 flex items-center gap-2 text-sm font-semibold text-[var(--text-muted)]">
           <PieChart className="h-4 w-4" />
-          Comparativa x10 vs x20
+          {t('analytics.compareX10X20')}
         </h3>
         {byLeverage.length === 0 ? (
-          <p className="text-sm text-[var(--text-muted)]">Sin datos por apalancamiento. Cierra operaciones con x10/x20 para ver la comparativa.</p>
+          <p className="text-sm text-[var(--text-muted)]">{t('analytics.noDataLeverage')}</p>
         ) : (
           <div className="grid gap-4 sm:grid-cols-2">
             {byLeverage.map((l) => (
               <div key={l.leverage} className="rounded-lg border border-white/10 bg-[var(--surface)] p-4">
                 <p className="text-lg font-semibold">x{l.leverage}</p>
                 <p className="mt-1 text-2xl font-bold text-[var(--accent)]">${parseFloat(l.net_pnl).toFixed(2)}</p>
-                <p className="text-sm text-[var(--text-muted)]">Trades: {l.total_trades} · Win rate: {l.win_rate.toFixed(1)}% · Fees: ${parseFloat(l.total_fees).toFixed(2)}</p>
+                <p className="text-sm text-[var(--text-muted)]">{t('analytics.tradesLabel')}: {l.total_trades} · Win rate: {l.win_rate.toFixed(1)}% · {t('analytics.fees')}: ${parseFloat(l.total_fees).toFixed(2)}</p>
               </div>
             ))}
           </div>
@@ -207,10 +209,10 @@ export function Analytics() {
       <section className="rounded-xl border border-white/10 bg-[var(--surface-muted)] p-6">
         <h3 className="mb-4 flex items-center gap-2 text-sm font-semibold text-[var(--text-muted)]">
           <TrendingUp className="h-4 w-4" />
-          Curva de equity (PnL acumulado)
+          {t('analytics.equityCurve')}
         </h3>
         {equityCurve.length === 0 ? (
-          <p className="text-sm text-[var(--text-muted)]">Sin datos de cierres. La curva se construye con el PnL acumulado de cada operación cerrada.</p>
+          <p className="text-sm text-[var(--text-muted)]">{t('analytics.noDataEquityCurve')}</p>
         ) : (
           <div className="h-64 w-full min-h-[200px] flex items-center justify-center bg-[var(--surface)]/50 rounded-lg">
             <EquityCurveChart points={equityCurve} />

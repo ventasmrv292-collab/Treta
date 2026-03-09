@@ -69,13 +69,13 @@ export function Ayuda() {
                 <p className="font-medium text-[var(--accent)]">
                   {s.family} / {s.name} ({s.version})
                 </p>
-                <p className="text-sm font-medium text-[var(--text)]">{s.title}</p>
-                <p className="text-sm text-[var(--text-muted)]">{s.short}</p>
+                <p className="text-sm font-medium text-[var(--text)]">{t(`strategies.${s.id}.title`)}</p>
+                <p className="text-sm text-[var(--text-muted)]">{t(`strategies.${s.id}.short`)}</p>
                 <div>
                   <p className="text-xs font-medium text-[var(--text-muted)] uppercase tracking-wide mb-1">
-                    Cómo funciona
+                    {t('ayuda.howItWorksLabel')}
                   </p>
-                  <p className="text-sm text-[var(--text-muted)]">{s.howItWorks}</p>
+                  <p className="text-sm text-[var(--text-muted)]">{t(`strategies.${s.id}.howItWorks`)}</p>
                 </div>
               </div>
             ))}
