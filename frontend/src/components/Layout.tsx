@@ -11,25 +11,32 @@ import {
   Sun,
   Moon,
   HelpCircle,
+  Languages,
 } from 'lucide-react'
 import { clsx } from 'clsx'
+import { useI18n } from '../contexts/I18nContext'
 
-const nav = [
-  { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { to: '/trade', label: 'Nueva operación', icon: PlusCircle },
-  { to: '/history', label: 'Histórico', icon: History },
-  { to: '/analytics', label: 'Analíticas', icon: BarChart3 },
-  { to: '/backtest', label: 'Backtest', icon: FlaskConical },
-  { to: '/ayuda', label: 'Cómo funciona', icon: HelpCircle },
-]
+const navKeys = [
+  { to: '/dashboard', key: 'nav.dashboard', icon: LayoutDashboard },
+  { to: '/trade', key: 'nav.newTrade', icon: PlusCircle },
+  { to: '/history', key: 'nav.history', icon: History },
+  { to: '/analytics', key: 'nav.analytics', icon: BarChart3 },
+  { to: '/backtest', key: 'nav.backtest', icon: FlaskConical },
+  { to: '/ayuda', key: 'nav.howItWorks', icon: HelpCircle },
+] as const
 
 export function Layout() {
+  const { t, locale, setLocale } = useI18n()
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [dark, setDark] = useState(true)
 
   const toggleTheme = () => {
     setDark((d) => !d)
     document.documentElement.classList.toggle('light', !dark)
+  }
+
+  const toggleLocale = () => {
+    setLocale(locale === 'es' ? 'pt-PT' : 'es')
   }
 
   return (
@@ -52,7 +59,7 @@ export function Layout() {
           </button>
         </div>
         <nav className="space-y-0.5 p-3">
-          {nav.map(({ to, label, icon: Icon }) => (
+          {navKeys.map(({ to, key, icon: Icon }) => (
             <NavLink
               key={to}
               to={to}
@@ -66,7 +73,7 @@ export function Layout() {
               }
             >
               <Icon className="h-5 w-5 shrink-0" />
-              {label}
+              {t(key)}
             </NavLink>
           ))}
         </nav>
@@ -97,15 +104,27 @@ export function Layout() {
           >
             {sidebarOpen ? <PanelLeftClose className="h-5 w-5" /> : <PanelLeft className="h-5 w-5" />}
           </button>
-          <h1 className="text-lg font-semibold truncate min-w-0">Paper Trading · BTCUSDT</h1>
-          <button
-            type="button"
-            onClick={toggleTheme}
-            className="rounded-lg p-2 hover:bg-white/10 shrink-0 transition-colors"
-            aria-label="Toggle theme"
-          >
-            {dark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
-          </button>
+          <h1 className="text-lg font-semibold truncate min-w-0">{t('common.paperTrading')}</h1>
+          <div className="flex items-center gap-1 shrink-0">
+            <button
+              type="button"
+              onClick={toggleLocale}
+              className="flex items-center gap-1.5 rounded-lg px-2.5 py-2 hover:bg-white/10 transition-colors text-sm font-medium"
+              title={locale === 'es' ? 'Mudar para Português' : 'Cambiar a Español'}
+              aria-label={locale === 'es' ? 'Traducir a portugués' : 'Translate to Portuguese'}
+            >
+              <Languages className="h-5 w-5 text-[var(--accent)]" />
+              <span className="hidden sm:inline">{t('common.localeName')}</span>
+            </button>
+            <button
+              type="button"
+              onClick={toggleTheme}
+              className="rounded-lg p-2 hover:bg-white/10 transition-colors"
+              aria-label="Toggle theme"
+            >
+              {dark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+            </button>
+          </div>
         </header>
         <div className="p-4 md:p-6">
           <Outlet />

@@ -1,4 +1,5 @@
 import { getEventExplanation } from '../constants/eventExplanations'
+import { useI18n } from '../contexts/I18nContext'
 import { X } from 'lucide-react'
 
 interface EventExplanationModalProps {
@@ -7,6 +8,7 @@ interface EventExplanationModalProps {
 }
 
 export function EventExplanationModal({ eventType, onClose }: EventExplanationModalProps) {
+  const { t } = useI18n()
   const ex = getEventExplanation(eventType)
 
   if (!ex) {
@@ -22,7 +24,7 @@ export function EventExplanationModal({ eventType, onClose }: EventExplanationMo
             onClick={onClose}
             className="mt-4 rounded-lg bg-[var(--accent)] px-4 py-2 text-sm text-white"
           >
-            Cerrar
+            {t('common.close')}
           </button>
         </div>
       </div>
@@ -56,7 +58,7 @@ export function EventExplanationModal({ eventType, onClose }: EventExplanationMo
           onClick={onClose}
           className="w-full rounded-lg bg-[var(--accent)] py-2 text-sm font-medium text-white"
         >
-          Cerrar
+          {t('common.close')}
         </button>
       </div>
     </div>

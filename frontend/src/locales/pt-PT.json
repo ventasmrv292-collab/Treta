@@ -1,0 +1,230 @@
+{
+  "nav": {
+    "dashboard": "Painel",
+    "newTrade": "Nova operação",
+    "history": "Histórico",
+    "analytics": "Analíticas",
+    "backtest": "Backtest",
+    "howItWorks": "Como funciona"
+  },
+  "common": {
+    "refresh": "Atualizar",
+    "close": "Fechar",
+    "cancel": "Cancelar",
+    "retry": "Tentar novamente",
+    "loading": "A carregar...",
+    "paperTrading": "Paper Trading · BTCUSDT",
+    "localeName": "Português"
+  },
+  "dashboard": {
+    "title": "Painel",
+    "timeframe": "Timeframe",
+    "liveData": "Dados em tempo real",
+    "btcPrice": "Preço BTC",
+    "totalTrades": "Total de operações",
+    "winRate": "Taxa de acerto",
+    "netPnl": "PnL líquido",
+    "capitalPaper": "Capital · Conta papel",
+    "initialCapital": "Capital inicial",
+    "currentBalance": "Saldo atual",
+    "equity": "Património",
+    "availableCapital": "Capital disponível",
+    "usedMargin": "Margem utilizada",
+    "realizedPnl": "PnL realizado",
+    "unrealizedPnl": "PnL não realizado",
+    "feesAccumulated": "Comissões acumuladas",
+    "openPositions": "Operações abertas",
+    "noAccount": "Não há conta papel. Executa no Supabase o seed docs/seeds/001_initial_seed.sql (após as migrações) para criar a conta por defeito.",
+    "loadingAccount": "A carregar conta...",
+    "scheduler": "Agendador",
+    "supervisor": "Supervisor (TP/SL)",
+    "status": "Estado",
+    "active": "Ativo",
+    "inactive": "Inativo",
+    "startedAt": "Iniciado",
+    "lastSync1m": "Última sincronização velas 1m",
+    "lastStrategy1m": "Última estratégia 1m",
+    "cycleEvery": "Ciclo a cada",
+    "last": "Último",
+    "notAvailable": "Não disponível",
+    "notAvailableBackend": "Não disponível (backend não ligado)",
+    "botLogs": "Últimos logs do bot",
+    "noLogs": "Sem logs recentes",
+    "clickToExplain": "Clique para ver o que significa",
+    "candles": "BTCUSDT · Velas",
+    "loadingChart": "A carregar gráfico...",
+    "feesPaid": "Comissões pagas",
+    "profitFactor": "Fator de lucro",
+    "pnlByStrategy": "PnL por estratégia",
+    "pnlByLeverage": "PnL por alavancagem",
+    "noDataStrategy": "Sem dados de operações fechadas. Feche operações para ver PnL por estratégia.",
+    "noDataLeverage": "Sem dados. Feche operações para ver PnL por alavancagem.",
+    "noDataEquity": "Sem pontos na curva. Feche operações para ver a evolução do capital.",
+    "recentHistory": "Histórico recente",
+    "viewAll": "Ver tudo",
+    "noOperations": "Não há operações.",
+    "newTradeLink": "Nova operação"
+  },
+  "history": {
+    "title": "Histórico de operações",
+    "refreshTitle": "Atualizar lista (também se atualiza a cada 30 s e ao voltar ao separador)",
+    "allSource": "Todos (origem)",
+    "manual": "Manual",
+    "n8n": "n8n",
+    "longShort": "Long/Short",
+    "long": "Long",
+    "short": "Short",
+    "leverage": "Alavancagem",
+    "closedOnly": "Só fechadas",
+    "winners": "Vencedoras",
+    "losers": "Perdedoras",
+    "date": "Data",
+    "symbol": "Símbolo",
+    "source": "Origem",
+    "status": "Estado",
+    "account": "Conta",
+    "margin": "Margem",
+    "capBefore": "Cap. ant.",
+    "capAfter": "Cap. disp.",
+    "strategy": "Estratégia",
+    "tf": "TF",
+    "ls": "L/S",
+    "entry": "Entrada",
+    "exit": "Saída",
+    "tp": "TP",
+    "sl": "SL",
+    "feeEnt": "Com. ent",
+    "feeSal": "Com. saída",
+    "pnlNet": "PnL líquido",
+    "pnlPct": "PnL %",
+    "closeReason": "Fecho",
+    "actions": "Ações",
+    "noTrades": "Não há operações com os filtros atuais.",
+    "closeBtn": "Fechar",
+    "closeTradeTitle": "Fechar operação",
+    "exitPrice": "Preço de saída *",
+    "exitPricePlaceholder": "Preço atual se vazio",
+    "currentPrice": "Preço atual",
+    "orderType": "Tipo de ordem",
+    "makerTakerExit": "Maker/Taker saída",
+    "closeReasonLabel": "Motivo do fecho *",
+    "closeReasonPlaceholder": "take_profit, stop_loss, manual...",
+    "closeOperation": "Fechar operação",
+    "totalOperations": "Total: {{count}} operações",
+    "page": "Página {{current}} de {{total}}"
+  },
+  "newTrade": {
+    "title": "Nova operação",
+    "symbol": "Símbolo",
+    "strategy": "Estratégia",
+    "timeframe": "Timeframe",
+    "side": "Lado",
+    "leverage": "Alavancagem",
+    "quantity": "Quantidade",
+    "entryPrice": "Preço de entrada",
+    "takeProfit": "Take profit",
+    "stopLoss": "Stop loss",
+    "notes": "Notas",
+    "submit": "Abrir operação",
+    "toastComplete": "Preenche quantidade e preço de entrada",
+    "toastStrategy": "Seleciona estratégia",
+    "toastClosed": "Operação fechada com sucesso",
+    "toastError": "Erro ao fechar"
+  },
+  "analytics": {
+    "title": "Analíticas e comparativos",
+    "loading": "A carregar analíticas...",
+    "errorTitle": "Erro ao carregar",
+    "feesPaid": "Comissões pagas",
+    "profitFactor": "Fator de lucro",
+    "pnlByStrategy": "PnL por estratégia",
+    "pnlByLeverage": "PnL por alavancagem",
+    "equityCurve": "Curva de património",
+    "backtestSummary": "Resumo de backtests"
+  },
+  "backtest": {
+    "title": "Backtesting",
+    "newBacktest": "Novo backtest",
+    "strategy": "Estratégia",
+    "symbol": "Símbolo",
+    "interval": "Intervalo",
+    "startTime": "Início",
+    "endTime": "Fim",
+    "initialCapital": "Capital inicial",
+    "leverage": "Alavancagem",
+    "run": "Executar backtest",
+    "toastDates": "Indica o intervalo de datas",
+    "toastStrategy": "Seleciona estratégia",
+    "toastDone": "Backtest concluído",
+    "toastError": "Erro no backtest"
+  },
+  "ayuda": {
+    "title": "Como funciona o bot",
+    "intro": "Aqui podes ver de forma simples o que faz cada estratégia e o que significa cada evento do log.",
+    "strategiesSection": "As 3 estratégias automáticas",
+    "eventsSection": "Eventos do log do bot",
+    "glossarySection": "Glossário de termos"
+  },
+  "glossary": {
+    "pnl": {
+      "title": "PnL (Profit and Loss)",
+      "description": "Lucro ou perda. É a diferença entre o valor ao fechar a posição e o valor ao abrir, após comissões."
+    },
+    "netPnl": {
+      "title": "PnL líquido",
+      "description": "Lucro ou perda líquida: o PnL bruto menos todas as comissões (entrada e saída) da operação."
+    },
+    "realizedPnl": {
+      "title": "PnL realizado",
+      "description": "Lucro ou perda já materializado ao fechar operações. Faz parte do saldo atual da conta."
+    },
+    "unrealizedPnl": {
+      "title": "PnL não realizado",
+      "description": "Lucro ou perda das posições ainda abertas, calculado com o preço atual. Não é definitivo até fechar."
+    },
+    "feesPaid": {
+      "title": "Comissões pagas / Comissões acumuladas",
+      "description": "Soma das comissões pagas na entrada e saída de todas as operações. Reduzem o lucro líquido."
+    },
+    "profitFactor": {
+      "title": "Fator de lucro (Profit factor)",
+      "description": "Rácio entre ganhos totais e perdas totais. Se for superior a 1, os ganhos superam as perdas. Se for inferior a 1 (por exemplo 0,81), as perdas são maiores."
+    },
+    "winRate": {
+      "title": "Taxa de acerto (Win rate)",
+      "description": "Percentagem de operações fechadas com lucro (vencedoras) sobre o total de operações fechadas."
+    },
+    "initialCapital": {
+      "title": "Capital inicial",
+      "description": "Saldo com que a conta papel começou (por exemplo 1000 USDT). Serve de referência para medir o desempenho."
+    },
+    "currentBalance": {
+      "title": "Saldo atual",
+      "description": "Saldo disponível na conta neste momento: capital inicial mais PnL realizado menos comissões acumuladas, sem contar a margem bloqueada em posições abertas de forma simplificada."
+    },
+    "equity": {
+      "title": "Património (Equity)",
+      "description": "Valor total da conta: saldo mais PnL não realizado das posições abertas. Reflete o património atual."
+    },
+    "availableCapital": {
+      "title": "Capital disponível",
+      "description": "Quantidade de USDT que podes usar para abrir novas operações. É o saldo menos a margem já utilizada em posições abertas."
+    },
+    "usedMargin": {
+      "title": "Margem utilizada",
+      "description": "Quantidade de capital bloqueada como garantia nas posições abertas. Com alavancagem, a margem é menor que o valor nominal da posição."
+    },
+    "takeProfit": {
+      "title": "Take profit (TP)",
+      "description": "Preço objetivo de lucro. Quando o preço o atinge, o supervisor fecha a operação automaticamente para assegurar o ganho."
+    },
+    "stopLoss": {
+      "title": "Stop loss (SL)",
+      "description": "Preço limite de perda. Se o preço o atingir, o supervisor fecha a operação para limitar a perda."
+    },
+    "leverage": {
+      "title": "Alavancagem (Leverage)",
+      "description": "Multiplicador do tamanho da posição em relação à margem. Por exemplo x10: com 10 USDT de margem controlas 100 USDT de exposição. Aumenta ganhos e perdas."
+    }
+  }
+}

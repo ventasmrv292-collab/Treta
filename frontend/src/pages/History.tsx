@@ -4,6 +4,7 @@ import type { Trade, TradeListResponse } from '../types'
 import { format } from 'date-fns'
 import { ChevronLeft, ChevronRight, X, RefreshCw } from 'lucide-react'
 import { useToast } from '../components/Toaster'
+import { useI18n } from '../contexts/I18nContext'
 
 /** PnL no realizado: LONG = (precioActual - entrada) * qty, SHORT = (entrada - precioActual) * qty */
 function unrealizedPnl(trade: Trade, currentPrice: number): number {
@@ -14,6 +15,7 @@ function unrealizedPnl(trade: Trade, currentPrice: number): number {
 }
 
 export function History() {
+  const { t } = useI18n()
   const { addToast } = useToast()
   const [data, setData] = useState<TradeListResponse | null>(null)
   const [currentPrice, setCurrentPrice] = useState<number | null>(null)
@@ -109,15 +111,15 @@ export function History() {
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
-        <h2 className="text-xl font-semibold">Histórico de operaciones</h2>
+        <h2 className="text-xl font-semibold">{t('history.title')}</h2>
         <button
           type="button"
           onClick={() => loadTrades()}
           className="flex items-center gap-2 rounded-lg border border-white/10 bg-[var(--surface-muted)] px-3 py-1.5 text-sm hover:bg-white/5"
-          title="Actualizar lista (también se actualiza cada 30 s y al volver a la pestaña)"
+          title={t('history.refreshTitle')}
         >
           <RefreshCw className="h-4 w-4" />
-          Refrescar
+          {t('common.refresh')}
         </button>
       </div>
       <div className="flex flex-wrap gap-3">
@@ -126,25 +128,25 @@ export function History() {
           onChange={(e) => setFilters((f) => ({ ...f, source: e.target.value || undefined }))}
           className="rounded-lg border border-white/10 bg-[var(--surface-muted)] px-3 py-1.5 text-sm"
         >
-          <option value="">Todos (origen)</option>
-          <option value="manual">Manual</option>
-          <option value="n8n">n8n</option>
+          <option value="">{t('history.allSource')}</option>
+          <option value="manual">{t('history.manual')}</option>
+          <option value="n8n">{t('history.n8n')}</option>
         </select>
         <select
           value={filters.position_side ?? ''}
           onChange={(e) => setFilters((f) => ({ ...f, position_side: e.target.value || undefined }))}
           className="rounded-lg border border-white/10 bg-[var(--surface-muted)] px-3 py-1.5 text-sm"
         >
-          <option value="">Long/Short</option>
-          <option value="LONG">Long</option>
-          <option value="SHORT">Short</option>
+          <option value="">{t('history.longShort')}</option>
+          <option value="LONG">{t('history.long')}</option>
+          <option value="SHORT">{t('history.short')}</option>
         </select>
         <select
           value={filters.leverage ?? ''}
           onChange={(e) => setFilters((f) => ({ ...f, leverage: e.target.value ? Number(e.target.value) : undefined }))}
           className="rounded-lg border border-white/10 bg-[var(--surface-muted)] px-3 py-1.5 text-sm"
         >
-          <option value="">Leverage</option>
+          <option value="">{t('history.leverage')}</option>
           <option value="10">x10</option>
           <option value="20">x20</option>
         </select>
@@ -155,7 +157,7 @@ export function History() {
             onChange={(e) => setFilters((f) => ({ ...f, closed_only: e.target.checked || undefined }))}
             className="rounded border-white/20"
           />
-          Solo cerradas
+          {t('history.closedOnly')}
         </label>
         <label className="flex items-center gap-2 text-sm">
           <input
@@ -164,7 +166,7 @@ export function History() {
             onChange={(e) => setFilters((f) => ({ ...f, winners_only: e.target.checked || undefined }))}
             className="rounded border-white/20"
           />
-          Ganadoras
+          {t('history.winners')}
         </label>
         <label className="flex items-center gap-2 text-sm">
           <input
@@ -173,7 +175,7 @@ export function History() {
             onChange={(e) => setFilters((f) => ({ ...f, losers_only: e.target.checked || undefined }))}
             className="rounded border-white/20"
           />
-          Perdedoras
+          {t('history.losers')}
         </label>
       </div>
 
@@ -181,34 +183,36 @@ export function History() {
         <table className="w-full min-w-[900px] text-sm">
           <thead>
             <tr className="border-b border-white/10 text-left text-[var(--text-muted)]">
-              <th className="p-3 font-medium">Fecha</th>
-              <th className="p-3 font-medium">Símbolo</th>
-              <th className="p-3 font-medium">Origen</th>
-              <th className="p-3 font-medium">Estado</th>
-              <th className="p-3 font-medium">Cuenta</th>
-              <th className="p-3 font-medium">Margen</th>
-              <th className="p-3 font-medium">Cap. ant.</th>
-              <th className="p-3 font-medium">Cap. des.</th>
-              <th className="p-3 font-medium">Estrategia</th>
-              <th className="p-3 font-medium">TF</th>
-              <th className="p-3 font-medium">L/S</th>
-              <th className="p-3 font-medium">Entrada</th>
-              <th className="p-3 font-medium">Salida</th>
-              <th className="p-3 font-medium">Leverage</th>
+              <th className="p-3 font-medium">{t('history.date')}</th>
+              <th className="p-3 font-medium">{t('history.symbol')}</th>
+              <th className="p-3 font-medium">{t('history.source')}</th>
+              <th className="p-3 font-medium">{t('history.status')}</th>
+              <th className="p-3 font-medium">{t('history.account')}</th>
+              <th className="p-3 font-medium">{t('history.margin')}</th>
+              <th className="p-3 font-medium">{t('history.capBefore')}</th>
+              <th className="p-3 font-medium">{t('history.capAfter')}</th>
+              <th className="p-3 font-medium">{t('history.strategy')}</th>
+              <th className="p-3 font-medium">{t('history.tf')}</th>
+              <th className="p-3 font-medium">{t('history.ls')}</th>
+              <th className="p-3 font-medium">{t('history.entry')}</th>
+              <th className="p-3 font-medium">{t('history.exit')}</th>
+              <th className="p-3 font-medium">{t('history.tp')}</th>
+              <th className="p-3 font-medium">{t('history.sl')}</th>
+              <th className="p-3 font-medium">{t('history.leverage')}</th>
               <th className="p-3 font-medium">Qty</th>
-              <th className="p-3 font-medium">Fee ent</th>
-              <th className="p-3 font-medium">Fee sal</th>
-              <th className="p-3 font-medium">PnL neto</th>
-              <th className="p-3 font-medium">PnL %</th>
-              <th className="p-3 font-medium">Cierre</th>
-              <th className="p-3 font-medium">Acciones</th>
+              <th className="p-3 font-medium">{t('history.feeEnt')}</th>
+              <th className="p-3 font-medium">{t('history.feeSal')}</th>
+              <th className="p-3 font-medium">{t('history.pnlNet')}</th>
+              <th className="p-3 font-medium">{t('history.pnlPct')}</th>
+              <th className="p-3 font-medium">{t('history.closeReason')}</th>
+              <th className="p-3 font-medium">{t('history.actions')}</th>
             </tr>
           </thead>
           <tbody>
             {trades.length === 0 && (
               <tr>
-                <td colSpan={21} className="p-8 text-center text-[var(--text-muted)]">
-                  No hay operaciones con los filtros actuales.
+                <td colSpan={23} className="p-8 text-center text-[var(--text-muted)]">
+                  {t('history.noTrades')}
                 </td>
               </tr>
             )}
@@ -227,6 +231,8 @@ export function History() {
                 <td className="p-3">{t.position_side}</td>
                 <td className="p-3">{t.entry_price}</td>
                 <td className="p-3">{t.exit_price ?? '—'}</td>
+                <td className="p-3" title="Take profit">{t.take_profit ?? '—'}</td>
+                <td className="p-3" title="Stop loss">{t.stop_loss ?? '—'}</td>
                 <td className="p-3">x{t.leverage}</td>
                 <td className="p-3">{t.quantity}</td>
                 <td className="p-3">{t.entry_fee != null ? parseFloat(t.entry_fee).toFixed(4) : '—'}</td>
@@ -251,7 +257,7 @@ export function History() {
                       }}
                       className="rounded bg-[var(--accent)]/80 px-2 py-1 text-xs font-medium hover:bg-[var(--accent)]"
                     >
-                      Cerrar
+                      {t('history.closeBtn')}
                     </button>
                   )}
                 </td>
@@ -266,21 +272,21 @@ export function History() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
           <div className="w-full max-w-md rounded-xl border border-white/10 bg-[var(--surface-muted)] p-6">
             <div className="mb-4 flex items-center justify-between">
-              <h3 className="text-lg font-semibold">Cerrar operación #{closingId}</h3>
+              <h3 className="text-lg font-semibold">{t('history.closeTradeTitle')} #{closingId}</h3>
               <button type="button" onClick={() => setClosingId(null)} className="rounded p-1 hover:bg-white/10">
                 <X className="h-5 w-5" />
               </button>
             </div>
             <div className="space-y-3">
               <label className="block">
-                <span className="text-sm text-[var(--text-muted)]">Precio de salida *</span>
+                <span className="text-sm text-[var(--text-muted)]">{t('history.exitPrice')}</span>
                 <div className="mt-1 flex gap-2">
                   <input
                     type="text"
                     value={closeForm.exit_price}
                     onChange={(e) => setCloseForm((f) => ({ ...f, exit_price: e.target.value }))}
                     className="flex-1 rounded border border-white/10 bg-[var(--surface)] px-3 py-2 text-sm"
-                    placeholder="Precio actual si está vacío"
+                    placeholder={t('history.exitPricePlaceholder')}
                   />
                   <button
                     type="button"
@@ -292,12 +298,12 @@ export function History() {
                     }}
                     className="shrink-0 rounded border border-white/20 bg-[var(--surface)] px-3 py-2 text-xs font-medium hover:bg-white/5"
                   >
-                    Precio actual
+                    {t('history.currentPrice')}
                   </button>
                 </div>
               </label>
               <label className="block">
-                <span className="text-sm text-[var(--text-muted)]">Tipo orden</span>
+                <span className="text-sm text-[var(--text-muted)]">{t('history.orderType')}</span>
                 <select
                   value={closeForm.exit_order_type}
                   onChange={(e) => setCloseForm((f) => ({ ...f, exit_order_type: e.target.value as 'MARKET' | 'LIMIT' }))}
@@ -308,7 +314,7 @@ export function History() {
                 </select>
               </label>
               <label className="block">
-                <span className="text-sm text-[var(--text-muted)]">Maker/Taker salida</span>
+                <span className="text-sm text-[var(--text-muted)]">{t('history.makerTakerExit')}</span>
                 <select
                   value={closeForm.maker_taker_exit}
                   onChange={(e) => setCloseForm((f) => ({ ...f, maker_taker_exit: e.target.value as 'MAKER' | 'TAKER' }))}
@@ -319,12 +325,12 @@ export function History() {
                 </select>
               </label>
               <label className="block">
-                <span className="text-sm text-[var(--text-muted)]">Motivo cierre *</span>
+                <span className="text-sm text-[var(--text-muted)]">{t('history.closeReasonLabel')}</span>
                 <input
                   type="text"
                   value={closeForm.exit_reason}
                   onChange={(e) => setCloseForm((f) => ({ ...f, exit_reason: e.target.value }))}
-                  placeholder="take_profit, stop_loss, manual..."
+                  placeholder={t('history.closeReasonPlaceholder')}
                   className="mt-1 w-full rounded border border-white/10 bg-[var(--surface)] px-3 py-2 text-sm"
                 />
               </label>
@@ -335,14 +341,14 @@ export function History() {
                 onClick={handleCloseTrade}
                 className="rounded bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:opacity-90"
               >
-                Cerrar operación
+                {t('history.closeOperation')}
               </button>
               <button
                 type="button"
                 onClick={() => setClosingId(null)}
                 className="rounded border border-white/20 px-4 py-2 text-sm hover:bg-white/5"
               >
-                Cancelar
+                {t('common.cancel')}
               </button>
             </div>
           </div>
@@ -352,7 +358,7 @@ export function History() {
 
       <div className="flex items-center justify-between">
         <p className="text-sm text-[var(--text-muted)]">
-          Total: {total} operaciones
+          {t('history.totalOperations', { count: total })}
         </p>
         <div className="flex items-center gap-2">
           <button
@@ -364,7 +370,7 @@ export function History() {
             <ChevronLeft className="h-4 w-4" />
           </button>
           <span className="text-sm">
-            Página {page} de {pages || 1}
+            {t('history.page', { current: page, total: pages || 1 })}
           </span>
           <button
             type="button"

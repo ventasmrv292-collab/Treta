@@ -25,6 +25,54 @@ interface LeverageComparison {
   total_fees: string
 }
 
+const PADDING = { top: 12, right: 12, bottom: 24, left: 48 }
+
+function EquityCurveChart({ points }: { points: { time: string; equity: number }[] }) {
+  if (points.length === 0) return null
+  const w = 600
+  const h = 240
+  const innerW = w - PADDING.left - PADDING.right
+  const innerH = h - PADDING.top - PADDING.bottom
+  const values = points.map((p) => p.equity)
+  const min = Math.min(...values, 0)
+  const max = Math.max(...values, 1)
+  const range = max - min || 1
+  const scaleY = (v: number) => PADDING.top + innerH - ((v - min) / range) * innerH
+  const scaleX = (i: number) => PADDING.left + (i / Math.max(points.length - 1, 1)) * innerW
+  const pathD = points
+    .map((p, i) => `${i === 0 ? 'M' : 'L'} ${scaleX(i)} ${scaleY(p.equity)}`)
+    .join(' ')
+  const lineFillD = `${pathD} L ${scaleX(points.length - 1)} ${h - PADDING.bottom} L ${scaleX(0)} ${h - PADDING.bottom} Z`
+  return (
+    <svg width="100%" height="100%" viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="xMidYMid meet" className="overflow-visible">
+      <defs>
+        <linearGradient id="equityCurveGradient" x1="0" y1="1" x2="0" y2="0">
+          <stop offset="0%" stopColor="var(--accent)" stopOpacity="0.25" />
+          <stop offset="100%" stopColor="var(--accent)" stopOpacity="0" />
+        </linearGradient>
+      </defs>
+      <path d={lineFillD} fill="url(#equityCurveGradient)" />
+      <path
+        d={pathD}
+        fill="none"
+        stroke="var(--accent)"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <line
+        x1={PADDING.left}
+        y1={scaleY(0)}
+        x2={w - PADDING.right}
+        y2={scaleY(0)}
+        stroke="var(--text-muted)"
+        strokeOpacity="0.4"
+        strokeDasharray="4 2"
+      />
+    </svg>
+  )
+}
+
 export function Analytics() {
   const [byStrategy, setByStrategy] = useState<StrategyComparison[]>([])
   const [byLeverage, setByLeverage] = useState<LeverageComparison[]>([])
@@ -164,23 +212,8 @@ export function Analytics() {
         {equityCurve.length === 0 ? (
           <p className="text-sm text-[var(--text-muted)]">Sin datos de cierres. La curva se construye con el PnL acumulado de cada operación cerrada.</p>
         ) : (
-          <div className="h-64 overflow-x-auto">
-            <div className="flex h-full min-w-[400px] items-end gap-0.5">
-              {equityCurve.map((p, i) => {
-                const max = Math.max(...equityCurve.map((x) => x.equity), 1)
-                const min = Math.min(...equityCurve.map((x) => x.equity), 0)
-                const range = max - min || 1
-                const h = ((p.equity - min) / range) * 100
-                return (
-                  <div
-                    key={i}
-                    title={`${p.time} → $${p.equity.toFixed(2)}`}
-                    className="flex-1 rounded-t bg-[var(--accent)]/60 transition hover:bg-[var(--accent)]"
-                    style={{ height: `${Math.max(2, h)}%` }}
-                  />
-                )
-              })}
-            </div>
+          <div className="h-64 w-full min-h-[200px] flex items-center justify-center bg-[var(--surface)]/50 rounded-lg">
+            <EquityCurveChart points={equityCurve} />
           </div>
         )}
       </section>
