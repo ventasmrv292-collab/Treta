@@ -6,7 +6,7 @@ from sqlalchemy import select
 
 from app.db import get_db
 from app.models.backtest import BacktestRun, BacktestResult
-from app.schemas.backtest import BacktestRunCreate, BacktestRunResponse
+from app.schemas.backtest import BacktestRunCreate, BacktestRunResponse, BacktestRunListResponse
 from app.services.market_data import MarketDataService
 from app.services.fee_engine import FeeEngine, FeeProfile
 
@@ -123,7 +123,7 @@ async def run_backtest(payload: BacktestRunCreate, db=Depends(get_db)):
     return run
 
 
-@router.get("", response_model=list[BacktestRunResponse])
+@router.get("", response_model=list[BacktestRunListResponse])
 async def list_backtests(
     db=Depends(get_db),
     limit: int = Query(50, le=100),

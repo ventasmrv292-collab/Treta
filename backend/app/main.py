@@ -1,14 +1,19 @@
 """FastAPI application entry point."""
 import asyncio
+import re
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from app.config import settings
 from app.db import init_db
 from app.api.routes import api_router
 from app.services.price_stream import run_price_stream
+
+# Regex para permitir origen Vercel en respuestas de error (cuando el middleware no añade CORS).
+VERCEL_ORIGIN_REGEX = re.compile(r"^https://[a-z0-9-]+\.vercel\.app$")
 
 # Si el refactor (scheduler_service) no está desplegado, arrancar solo price stream + supervisor como antes.
 try:
@@ -59,6 +64,24 @@ app.add_middleware(
 )
 
 app.include_router(api_router)
+
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """Devuelve 500 con cabeceras CORS para que el front en Vercel no vea bloqueo CORS."""
+    origin = request.headers.get("origin") or ""
+    headers = {}
+    if origin and (
+        origin in settings.cors_origins_list
+        or (settings.cors_allow_vercel_app and VERCEL_ORIGIN_REGEX.match(origin))
+    ):
+        headers["Access-Control-Allow-Origin"] = origin
+        headers["Access-Control-Allow-Credentials"] = "true"
+    return JSONResponse(
+        status_code=500,
+        content={"detail": str(exc)},
+        headers=headers,
+    )
 
 
 @app.get("/health")
