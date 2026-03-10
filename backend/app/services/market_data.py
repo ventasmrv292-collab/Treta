@@ -48,15 +48,28 @@ def _cache_get_stale(key: tuple[str, str]) -> Any | None:
 
 
 def _parse_kline(row: list[Any]) -> dict[str, Any]:
-    """Parse Binance kline array to dict."""
-    return {
+    """Parse Binance Futures kline array to dict. Binance: [open_time, open, high, low, close, volume, close_time, quote_vol, trades, taker_buy_base, taker_buy_quote, _]."""
+    close_time_dt = None
+    if len(row) > 6 and row[6] is not None:
+        close_time_dt = datetime.fromtimestamp(row[6] / 1000, tz=timezone.utc)
+    out: dict[str, Any] = {
         "open_time": datetime.fromtimestamp(row[0] / 1000, tz=timezone.utc),
         "open": Decimal(str(row[1])),
         "high": Decimal(str(row[2])),
         "low": Decimal(str(row[3])),
         "close": Decimal(str(row[4])),
         "volume": Decimal(str(row[5])),
+        "close_time": close_time_dt,
     }
+    if len(row) > 7 and row[7] is not None:
+        out["quote_volume"] = Decimal(str(row[7]))
+    if len(row) > 8 and row[8] is not None:
+        out["trade_count"] = int(row[8])
+    if len(row) > 9 and row[9] is not None:
+        out["taker_buy_base_volume"] = Decimal(str(row[9]))
+    if len(row) > 10 and row[10] is not None:
+        out["taker_buy_quote_volume"] = Decimal(str(row[10]))
+    return out
 
 
 async def _price_from_coincap(symbol: str) -> Decimal:
@@ -163,9 +176,10 @@ class MarketDataService:
         limit: int = 500,
         start_time: int | None = None,
         end_time: int | None = None,
+        force_binance: bool = False,
     ) -> list[dict[str, Any]]:
-        """Get historical klines. En Render usa CoinGecko; si no, Binance con fallback 451."""
-        if self._use_coingecko:
+        """Get historical klines. Si force_binance=True no usa CoinGecko (para ingesta DB: solo velas Binance con intervalos correctos)."""
+        if self._use_coingecko and not force_binance:
             return await _klines_from_coingecko(symbol, limit)
         try:
             interval = INTERVAL_MAP.get(interval, interval)
@@ -184,7 +198,7 @@ class MarketDataService:
                 data = r.json()
             return [_parse_kline(row) for row in data]
         except httpx.HTTPStatusError as e:
-            if e.response.status_code == 451:
+            if e.response.status_code == 451 and not force_binance:
                 logger.warning("Binance 451 (bloqueo regional), usando CoinGecko para velas")
                 return await _klines_from_coingecko(symbol, limit)
             raise
