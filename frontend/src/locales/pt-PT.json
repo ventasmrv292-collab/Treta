@@ -63,7 +63,14 @@
     "recentHistory": "Histórico recente",
     "viewAll": "Ver tudo",
     "noOperations": "Não há operações.",
-    "newTradeLink": "Nova operação"
+    "newTradeLink": "Nova operação",
+    "indicatorsOverlay": "Indicadores",
+    "strategyOverlay": {
+      "breakout": "Breakout",
+      "vwap_snapback": "VWAP",
+      "ema_pullback": "EMA",
+      "none": "Nenhum"
+    }
   },
   "history": {
     "title": "Histórico de operações",

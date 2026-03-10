@@ -1,6 +1,7 @@
 import { useEffect, useRef, useCallback } from 'react'
 import { createChart, IChartApi, ISeriesApi, CandlestickData } from 'lightweight-charts'
 import type { CandleData } from '../types'
+import { getIndicatorsForStrategy, type StrategyOverlayId } from '../utils/strategyIndicators'
 
 interface CandlestickChartProps {
   data: CandleData[]
@@ -9,12 +10,15 @@ interface CandlestickChartProps {
   onCrosshairMove?: (price: number | null) => void
   /** Precio en vivo para actualizar la última vela en tiempo real */
   livePrice?: number | null
+  /** Estrategia cuyos indicadores se superponen en el gráfico (Breakout, VWAP, EMA) */
+  strategyOverlay?: StrategyOverlayId | null
 }
 
-export function CandlestickChart({ data, height = 400, interval = '15m', onCrosshairMove, livePrice }: CandlestickChartProps) {
+export function CandlestickChart({ data, height = 400, interval = '15m', onCrosshairMove, livePrice, strategyOverlay }: CandlestickChartProps) {
   const chartRef = useRef<HTMLDivElement>(null)
   const chartInstance = useRef<IChartApi | null>(null)
   const seriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null)
+  const indicatorSeriesRef = useRef<ISeriesApi<'Line'>[]>([])
 
   const isDark = !document.documentElement.classList.contains('light')
 
@@ -112,6 +116,41 @@ export function CandlestickChart({ data, height = 400, interval = '15m', onCross
       close: livePrice,
     })
   }, [livePrice, data])
+
+  // Indicadores por estrategia: añadir o quitar series de líneas
+  useEffect(() => {
+    const chart = chartInstance.current
+    if (!chart || !data.length) return
+
+    indicatorSeriesRef.current.forEach((s) => {
+      try {
+        chart.removeSeries(s)
+      } catch (_) {}
+    })
+    indicatorSeriesRef.current = []
+
+    if (strategyOverlay) {
+      const seriesList = getIndicatorsForStrategy(strategyOverlay, data)
+      const timeData = (arr: { time: number; value: number }[]) =>
+        arr.map((d) => ({ time: d.time as unknown as CandlestickData['time'], value: d.value }))
+
+      seriesList.forEach((ind) => {
+        const options: { color: string; priceScaleId?: string } = { color: ind.color }
+        if (ind.isVolume) {
+          options.priceScaleId = 'volume'
+        }
+        const lineSeries = chart.addLineSeries(options)
+        if (ind.isVolume) {
+          try {
+            lineSeries.priceScale().applyOptions({ scaleMargins: { top: 0.75, bottom: 0 } })
+          } catch (_) {}
+        }
+        lineSeries.setData(timeData(ind.data))
+        indicatorSeriesRef.current.push(lineSeries)
+      })
+      chart.timeScale().fitContent()
+    }
+  }, [data, strategyOverlay])
 
   return <div ref={chartRef} style={{ height: `${height}px`, width: '100%' }} />
 }

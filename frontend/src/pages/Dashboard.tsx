@@ -7,6 +7,7 @@ import { getEventExplanation } from '../constants/eventExplanations'
 import { useI18n } from '../contexts/I18nContext'
 import { WS_BASE } from '../config'
 import type { CandleData, PaperAccount, Trade } from '../types'
+import type { StrategyOverlayId } from '../utils/strategyIndicators'
 import { format } from 'date-fns'
 import { TrendingUp, Activity, DollarSign, Percent, Wallet, History, ArrowRight, Bot, FileText } from 'lucide-react'
 
@@ -57,6 +58,7 @@ export function Dashboard() {
   const [schedulerStatus, setSchedulerStatus] = useState<{ running: boolean; started_at: number | null; jobs: Record<string, { last_run_at?: number; last_error?: string }> } | null>(null)
   const [botLogs, setBotLogs] = useState<{ id: number; level: string; event_type: string; message: string; created_at: string }[]>([])
   const [eventTypeForHelp, setEventTypeForHelp] = useState<string | null>(null)
+  const [strategyOverlay, setStrategyOverlay] = useState<StrategyOverlayId | null>(null)
 
   // Carga inicial: klines, precio, cuentas paper y dashboard (o summary con cuenta)
   useEffect(() => {
@@ -486,7 +488,35 @@ export function Dashboard() {
 
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2 rounded-xl border border-white/10 bg-[var(--surface-muted)] p-4">
-          <h3 className="mb-4 text-sm font-semibold text-[var(--text-muted)]">{t('dashboard.candles')}</h3>
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+            <h3 className="text-sm font-semibold text-[var(--text-muted)]">{t('dashboard.candles')}</h3>
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-xs text-[var(--text-muted)]">{t('dashboard.indicatorsOverlay')}:</span>
+              {(['breakout', 'vwap_snapback', 'ema_pullback'] as const).map((id) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => setStrategyOverlay(strategyOverlay === id ? null : id)}
+                  className={`rounded-lg border px-2.5 py-1 text-xs font-medium transition-colors ${
+                    strategyOverlay === id
+                      ? 'border-[var(--accent)] bg-[var(--accent)]/20 text-[var(--accent)]'
+                      : 'border-white/10 bg-white/5 text-[var(--text-muted)] hover:bg-white/10 hover:text-[var(--text)]'
+                  }`}
+                >
+                  {t(`dashboard.strategyOverlay.${id}`)}
+                </button>
+              ))}
+              {strategyOverlay && (
+                <button
+                  type="button"
+                  onClick={() => setStrategyOverlay(null)}
+                  className="rounded-lg border border-white/10 bg-white/5 px-2.5 py-1 text-xs font-medium text-[var(--text-muted)] hover:bg-white/10 hover:text-[var(--text)]"
+                >
+                  {t('dashboard.strategyOverlay.none')}
+                </button>
+              )}
+            </div>
+          </div>
           {loading ? (
             <div className="flex h-[400px] items-center justify-center text-[var(--text-muted)]">{t('dashboard.loadingChart')}</div>
           ) : (
@@ -495,6 +525,7 @@ export function Dashboard() {
               interval={interval}
               onCrosshairMove={setCrosshairPrice}
               livePrice={livePrice}
+              strategyOverlay={strategyOverlay}
             />
           )}
         </div>
