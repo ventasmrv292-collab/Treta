@@ -46,11 +46,14 @@ async def get_klines(
     symbol: str = Query("BTCUSDT"),
     interval: str = Query("15m"),
     limit: int = Query(300, le=1500),
+    force_binance: bool = Query(False, description="Intentar Binance primero (velas con volumen); si falla 451 se usa CoinGecko"),
 ):
-    """Get klines for chart (from Binance)."""
+    """Get klines for chart. Por defecto usa Binance o CoinGecko según configuración; force_binance=1 intenta Binance primero."""
     try:
         svc = MarketDataService()
-        klines = await svc.get_klines(symbol=symbol, interval=interval, limit=limit)
+        klines = await svc.get_klines(
+            symbol=symbol, interval=interval, limit=limit, force_binance=force_binance
+        )
         return {
             "symbol": symbol,
             "interval": interval,
