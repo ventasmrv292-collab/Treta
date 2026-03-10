@@ -1,6 +1,6 @@
 """Trade service - create, close, compute PnL."""
 from decimal import Decimal
-from datetime import datetime, timezone, date
+from datetime import datetime, timezone, date, timedelta
 
 from sqlalchemy import select, func, and_
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -50,6 +50,14 @@ async def get_default_fee_engine(session: AsyncSession) -> FeeEngine:
             include_funding=row.include_funding,
         )
     return FeeEngine.from_profile(FeeProfile.REALISTIC)
+
+
+async def get_default_fee_config_id(session: AsyncSession) -> int | None:
+    """ID del fee config por defecto (para persistir en trades)."""
+    result = await session.execute(
+        select(FeeConfig.id).where(FeeConfig.is_default == True).limit(1)
+    )
+    return result.scalar_one_or_none()
 
 
 def manual_create_to_trade(d: ManualTradeCreate) -> dict:
@@ -173,6 +181,9 @@ async def prepare_manual_trade(session: AsyncSession, payload: ManualTradeCreate
     data["entry_notional"] = entry_notional
     data["margin_used_usdt"] = margin_used
     data["entry_fee"] = entry_fee
+    fee_config_id = await get_default_fee_config_id(session)
+    if fee_config_id is not None:
+        data["fee_config_id"] = fee_config_id
 
     if account_id is not None:
         result = await session.execute(select(PaperAccount).where(PaperAccount.id == account_id))
@@ -230,6 +241,8 @@ def n8n_create_to_trade(d: N8nTradeCreate, data_override: dict | None = None) ->
     }
     if getattr(d, "account_id", None) is not None:
         out["account_id"] = d.account_id
+    if getattr(d, "fee_config_id", None) is not None:
+        out["fee_config_id"] = d.fee_config_id
     if getattr(d, "risk_profile_id", None) is not None:
         out["risk_profile_id"] = d.risk_profile_id
     if getattr(d, "idempotency_key", None):
@@ -286,12 +299,15 @@ async def prepare_n8n_trade(session: AsyncSession, payload: N8nTradeCreate) -> d
     rate = engine.config.taker_rate()
     entry_fee = calc_entry_fee(entry_notional, rate)
 
+    fee_config_id = await get_default_fee_config_id(session)
     data_override = {
         "entry_notional": entry_notional,
         "margin_used_usdt": margin_used,
         "entry_fee": entry_fee,
         "quantity": qty,
     }
+    if fee_config_id is not None:
+        data_override["fee_config_id"] = fee_config_id
 
     if account_id is not None:
         result = await session.execute(select(PaperAccount).where(PaperAccount.id == account_id))
@@ -326,6 +342,46 @@ async def prepare_n8n_trade(session: AsyncSession, payload: N8nTradeCreate) -> d
     return data_override
 
 
+async def has_exposure_conflict(
+    session: AsyncSession,
+    *,
+    symbol: str,
+    strategy_id: int | None,
+    strategy_name: str,
+    timeframe: str,
+    position_side: str,
+    max_open_positions: int,
+    cooldown_minutes: int,
+) -> tuple[bool, str]:
+    """
+    Devuelve (True, motivo) si no se debe abrir por duplicación/sobreexposición.
+    (False, "") si está OK abrir.
+    """
+    q = select(Trade).where(
+        Trade.symbol == symbol,
+        Trade.status == "OPEN",
+        Trade.position_side == position_side,
+    )
+    if strategy_id is not None:
+        q = q.where(Trade.strategy_id == strategy_id)
+    else:
+        q = q.where(Trade.strategy_name == strategy_name)
+
+    result = await session.execute(q)
+    open_trades = list(result.scalars().all())
+    if len(open_trades) >= max_open_positions:
+        return True, f"EXPOSURE_LIMIT: max_open_positions={max_open_positions}"
+
+    if cooldown_minutes > 0:
+        cutoff = datetime.now(timezone.utc) - timedelta(minutes=cooldown_minutes)
+        for t in open_trades:
+            if t.timeframe == timeframe and (t.opened_at or t.created_at) >= cutoff:
+                ts = t.opened_at or t.created_at
+                return True, f"COOLDOWN_ACTIVE: last_opened_at={ts.isoformat() if ts else '?'}"
+
+    return False, ""
+
+
 async def close_trade_and_compute_pnl(
     session: AsyncSession,
     trade_id: int,
@@ -338,6 +394,9 @@ async def close_trade_and_compute_pnl(
         return None
 
     engine = await get_default_fee_engine(session)
+    default_fee_id = await get_default_fee_config_id(session)
+    if trade.fee_config_id is None and default_fee_id is not None:
+        trade.fee_config_id = default_fee_id
     closed_at = payload.closed_at or datetime.now(timezone.utc)
     res = engine.compute_fees_and_pnl(
         quantity=trade.quantity,

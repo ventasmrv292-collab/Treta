@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import async_session_maker
 from app.models.strategy import Strategy
+from app.models.strategy_runtime_config import StrategyRuntimeConfig
 from app.models.candle import Candle
 from app.models.trade import Trade
 from app.models.paper_account import PaperAccount
@@ -22,7 +23,7 @@ from app.models.signal_event import SignalEvent
 from app.models.account_ledger import AccountLedger
 from app.services.strategies import get_strategy_fn, STRATEGY_REGISTRY
 from app.services.strategies.base import StrategySignal
-from app.services.trade_service import prepare_n8n_trade, n8n_create_to_trade
+from app.services.trade_service import prepare_n8n_trade, n8n_create_to_trade, has_exposure_conflict
 from app.schemas.trade import N8nTradeCreate
 from app.services.bot_log_service import (
     log_event as bot_log_event,
@@ -51,6 +52,23 @@ async def _get_default_account_and_profile(session: AsyncSession) -> tuple[int |
     rp = await session.execute(select(RiskProfile).order_by(RiskProfile.id).limit(1))
     profile = rp.scalar_one_or_none()
     return (acc.id if acc else None, profile.id if profile else None)
+
+
+async def _get_runtime_config(
+    session: AsyncSession,
+    strategy: Strategy,
+    symbol: str,
+    timeframe: str,
+) -> StrategyRuntimeConfig | None:
+    """Configuración granular por estrategia/símbolo/timeframe (si existe)."""
+    result = await session.execute(
+        select(StrategyRuntimeConfig).where(
+            StrategyRuntimeConfig.strategy_id == strategy.id,
+            StrategyRuntimeConfig.symbol == symbol,
+            StrategyRuntimeConfig.timeframe == timeframe,
+        )
+    )
+    return result.scalar_one_or_none()
 
 
 def _signal_to_n8n_payload(
@@ -235,6 +253,9 @@ async def run_strategies_for_timeframe(interval: str) -> list[Trade]:
             if not fn:
                 continue
             try:
+                cfg = await _get_runtime_config(session, strat, SYMBOL, interval)
+                if cfg is not None and not cfg.active:
+                    continue
                 params = {}
                 if strat.default_params_json:
                     try:
@@ -245,8 +266,39 @@ async def run_strategies_for_timeframe(interval: str) -> list[Trade]:
                 signal = fn(candles, params)
                 if signal is None:
                     continue
-                # Ejecutar en una nueva sesión para cada señal (commit aislado)
+                if cfg is not None:
+                    if signal.position_side == "LONG" and not cfg.allow_long:
+                        continue
+                    if signal.position_side == "SHORT" and not cfg.allow_short:
+                        continue
                 async with async_session_maker() as exec_session:
+                    if cfg is not None:
+                        blocked, reason = await has_exposure_conflict(
+                            exec_session,
+                            symbol=SYMBOL,
+                            strategy_id=strat.id,
+                            strategy_name=strat.name,
+                            timeframe=interval,
+                            position_side=signal.position_side,
+                            max_open_positions=cfg.max_open_positions,
+                            cooldown_minutes=cfg.cooldown_minutes,
+                        )
+                        if blocked:
+                            await bot_log_event(
+                                exec_session,
+                                "WARN",
+                                MODULE_STRATEGY,
+                                EVENT_SIGNAL_REJECTED,
+                                f"Signal rejected (exposure): {reason}",
+                                context={
+                                    "strategy": strat.name,
+                                    "timeframe": interval,
+                                    "position_side": signal.position_side,
+                                    "reason": reason,
+                                },
+                            )
+                            await exec_session.commit()
+                            continue
                     trade = await _execute_signal(exec_session, signal, account_id, risk_profile_id, strategy_id=strat.id)
                     if trade:
                         opened.append(trade)

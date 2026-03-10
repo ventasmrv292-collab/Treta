@@ -5,8 +5,10 @@ from sqlalchemy import select, func, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import datetime, timedelta
 
+from fastapi import Query
 from app.db import get_db
 from app.models.trade import Trade
+from app.services.analytics_service import get_runtime_recommendations
 from app.models.paper_account import PaperAccount
 from app.schemas.analytics import DashboardMetrics, StrategyComparison, LeverageComparison
 from app.schemas.paper_account import DashboardSummaryResponse, PaperAccountResponse
@@ -294,3 +296,12 @@ async def get_dashboard_summary(
         equity_usdt=equity_usdt,
         open_positions_count=int(open_positions_count),
     )
+
+
+@router.get("/runtime-recommendations")
+async def runtime_recommendations(
+    days: int = Query(7, ge=1, le=60),
+    db: AsyncSession = Depends(get_db),
+):
+    """Diagnóstico y recomendaciones según rendimiento reciente (estrategia, timeframe, LONG vs SHORT)."""
+    return await get_runtime_recommendations(db, days=days)
