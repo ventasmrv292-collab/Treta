@@ -1,4 +1,5 @@
 """Trade service - create, close, compute PnL."""
+import asyncio
 from decimal import Decimal
 from datetime import datetime, timezone, date, timedelta
 
@@ -437,6 +438,8 @@ async def close_trade_and_compute_pnl(
         context={"exit_reason": payload.exit_reason, "net_pnl_usdt": str(res.net_pnl_usdt)},
         related_trade_id=trade_id,
     )
+    from app.services.pushover_service import send_trade_closed
+    asyncio.create_task(send_trade_closed(trade))
     return trade
 
 

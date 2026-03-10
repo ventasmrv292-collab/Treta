@@ -4,6 +4,7 @@ genera señales y las ejecuta (signal_event -> validación riesgo -> trade -> le
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from datetime import datetime, timezone
@@ -35,6 +36,7 @@ from app.services.bot_log_service import (
     EVENT_DUPLICATE_SIGNAL,
 )
 from app.services.trading_capital import calc_margin_used
+from app.services.pushover_service import send_trade_opened
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +50,6 @@ async def _get_default_account_and_profile(session: AsyncSession) -> tuple[int |
     """Primera cuenta paper activa y primer risk profile (si existen)."""
     r = await session.execute(select(PaperAccount).where(PaperAccount.status == "ACTIVE").order_by(PaperAccount.id).limit(1))
     acc = r.scalar_one_or_none()
-    from app.models.risk_profile import RiskProfile
     rp = await session.execute(select(RiskProfile).order_by(RiskProfile.id).limit(1))
     profile = rp.scalar_one_or_none()
     return (acc.id if acc else None, profile.id if profile else None)
@@ -205,6 +206,7 @@ async def _execute_signal(
         context={"symbol": trade.symbol, "position_side": trade.position_side},
         related_trade_id=trade.id,
     )
+    asyncio.create_task(send_trade_opened(trade))
     await session.commit()
     return trade
 

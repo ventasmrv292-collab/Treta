@@ -1,10 +1,12 @@
 """Webhook for n8n - receive automated trade signals."""
+import asyncio
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.db import get_db
 from app.models.trade import Trade
 from app.schemas.trade import N8nTradeCreate, TradeResponse
 from app.services.trade_service import n8n_create_to_trade, prepare_n8n_trade
+from app.services.pushover_service import send_trade_opened
 from app.services.bot_log_service import (
     log_event as bot_log_event,
     MODULE_WEBHOOK,
@@ -66,4 +68,5 @@ async def webhook_n8n_trade(payload: N8nTradeCreate, db=Depends(get_db)):
         context={"symbol": trade.symbol, "position_side": trade.position_side},
         related_trade_id=trade.id,
     )
+    asyncio.create_task(send_trade_opened(trade))
     return trade

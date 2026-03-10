@@ -60,5 +60,9 @@ class Settings(BaseSettings):
     # Regex para permitir *.vercel.app (usado por el middleware si cors_allow_vercel_app=True).
     cors_vercel_regex: str = r"https://[a-z0-9-]+\.vercel\.app"
 
+    # Pushover: notificaciones al abrir/cerrar operaciones (opcional).
+    pushover_user_key: str = ""
+    pushover_app_token: str = ""
+
 
 settings = Settings()
