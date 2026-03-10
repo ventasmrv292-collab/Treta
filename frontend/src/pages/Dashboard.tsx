@@ -432,6 +432,11 @@ export function Dashboard() {
               {schedulerStatus.jobs?.sync_candles_1m?.last_run_at != null && (
                 <p className="text-[var(--text-muted)]">{t('dashboard.lastSync1m')}: {format(new Date(schedulerStatus.jobs.sync_candles_1m.last_run_at * 1000), 'HH:mm:ss')}</p>
               )}
+              {schedulerStatus.jobs?.sync_candles_1m?.last_error != null && (
+                <p className="text-amber-400 text-xs mt-1" title={schedulerStatus.jobs.sync_candles_1m.last_error}>
+                  {t('dashboard.syncCandlesError')}: {schedulerStatus.jobs.sync_candles_1m.last_error.slice(0, 60)}{schedulerStatus.jobs.sync_candles_1m.last_error.length > 60 ? '…' : ''}
+                </p>
+              )}
               {schedulerStatus.jobs?.run_strategies_1m?.last_run_at != null && (
                 <p className="text-[var(--text-muted)]">{t('dashboard.lastStrategy1m')}: {format(new Date(schedulerStatus.jobs.run_strategies_1m.last_run_at * 1000), 'HH:mm:ss')}</p>
               )}

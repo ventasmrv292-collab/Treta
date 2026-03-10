@@ -43,6 +43,7 @@
     "inactive": "Inativo",
     "startedAt": "Iniciado",
     "lastSync1m": "Última sincronização velas 1m",
+    "syncCandlesError": "Erro ao sincronizar velas",
     "lastStrategy1m": "Última estratégia 1m",
     "cycleEvery": "Ciclo a cada",
     "last": "Último",
