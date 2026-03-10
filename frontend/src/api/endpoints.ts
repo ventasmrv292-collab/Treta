@@ -80,6 +80,7 @@ export const endpoints = {
     byStrategy: () => '/analytics/by-strategy',
     byLeverage: () => '/analytics/by-leverage',
     equityCurve: (period?: string) => `/analytics/equity-curve${qs({ period: period || 'all' })}`,
+    runtimeRecommendations: (days?: number) => `/analytics/runtime-recommendations${qs({ days: days ?? 7 })}`,
   },
   backtest: {
     list: () => '/backtest',
@@ -186,6 +187,22 @@ export async function fetchAnalytics(): Promise<{
     fetch(`${API_V1}${endpoints.analytics.equityCurve()}`).then((r) => r.json()),
   ])
   return { byStrategy, byLeverage, equityCurve }
+}
+
+export interface RuntimeRecommendations {
+  window_days: number
+  best_strategy: { strategy_name: string; net_pnl: number } | null
+  worst_strategy: { strategy_name: string; net_pnl: number } | null
+  best_timeframe: { timeframe: string; net_pnl: number } | null
+  worst_timeframe: { timeframe: string; net_pnl: number } | null
+  side_performance: { position_side: string; net_pnl: number }[]
+  recommendations: string[]
+}
+
+export async function fetchRuntimeRecommendations(days = 7): Promise<RuntimeRecommendations> {
+  const res = await fetch(`${API_V1}${endpoints.analytics.runtimeRecommendations(days)}`)
+  if (!res.ok) throw new Error('Failed to fetch runtime recommendations')
+  return res.json() as Promise<RuntimeRecommendations>
 }
 
 export async function fetchPaperAccounts() {

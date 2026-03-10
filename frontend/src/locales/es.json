@@ -154,7 +154,12 @@
     "noDataEquityCurve": "Sin datos de cierres. La curva se construye con el PnL acumulado de cada operación cerrada.",
     "tradesLabel": "Trades",
     "supabase": "Supabase",
-    "api": "API"
+    "api": "API",
+    "recommendationsTitle": "Recomendaciones (últimos {{days}} días)",
+    "bestStrategy": "Mejor estrategia",
+    "worstStrategy": "Peor estrategia",
+    "bestTimeframe": "Mejor timeframe",
+    "worstTimeframe": "Peor timeframe"
   },
   "backtest": {
     "title": "Backtesting",

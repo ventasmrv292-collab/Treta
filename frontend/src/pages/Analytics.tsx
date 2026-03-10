@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { fetchAnalytics } from '../api/endpoints'
+import { fetchAnalytics, fetchRuntimeRecommendations, type RuntimeRecommendations } from '../api/endpoints'
 import { USE_SUPABASE } from '../config'
 import { useI18n } from '../contexts/I18nContext'
 import { BarChart3, TrendingUp, PieChart } from 'lucide-react'
@@ -79,17 +79,20 @@ export function Analytics() {
   const [byStrategy, setByStrategy] = useState<StrategyComparison[]>([])
   const [byLeverage, setByLeverage] = useState<LeverageComparison[]>([])
   const [equityCurve, setEquityCurve] = useState<{ time: string; equity: number }[]>([])
+  const [runtimeRec, setRuntimeRec] = useState<RuntimeRecommendations | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   const load = () => {
     setError(null)
     setLoading(true)
-    fetchAnalytics()
-      .then(({ byStrategy: strat, byLeverage: lev, equityCurve: curve }) => {
+    Promise.all([fetchAnalytics(), fetchRuntimeRecommendations(7).catch(() => null)])
+      .then(([analytics, rec]) => {
+        const { byStrategy: strat, byLeverage: lev, equityCurve: curve } = analytics
         setByStrategy(strat ?? [])
         setByLeverage(lev ?? [])
         setEquityCurve(curve?.points ?? [])
+        setRuntimeRec(rec ?? null)
       })
       .catch((e) => {
         setError(e instanceof Error ? e.message : 'No se pudieron cargar las analíticas')
@@ -144,6 +147,51 @@ export function Analytics() {
           {USE_SUPABASE ? t('analytics.supabase') : t('analytics.api')}
         </span>
       </div>
+
+      {runtimeRec && (
+        <section className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-6">
+          <h3 className="mb-4 flex items-center gap-2 text-sm font-semibold text-amber-200">
+            {t('analytics.recommendationsTitle', { days: runtimeRec.window_days })}
+          </h3>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 text-sm">
+            {runtimeRec.best_strategy && (
+              <div className="rounded-lg border border-white/10 bg-[var(--surface)] p-3">
+                <p className="text-[var(--text-muted)]">{t('analytics.bestStrategy')}</p>
+                <p className="font-medium text-[var(--positive)]">{runtimeRec.best_strategy.strategy_name}</p>
+                <p className="text-xs">PnL: ${runtimeRec.best_strategy.net_pnl.toFixed(2)}</p>
+              </div>
+            )}
+            {runtimeRec.worst_strategy && (
+              <div className="rounded-lg border border-white/10 bg-[var(--surface)] p-3">
+                <p className="text-[var(--text-muted)]">{t('analytics.worstStrategy')}</p>
+                <p className="font-medium text-[var(--negative)]">{runtimeRec.worst_strategy.strategy_name}</p>
+                <p className="text-xs">PnL: ${runtimeRec.worst_strategy.net_pnl.toFixed(2)}</p>
+              </div>
+            )}
+            {runtimeRec.best_timeframe && (
+              <div className="rounded-lg border border-white/10 bg-[var(--surface)] p-3">
+                <p className="text-[var(--text-muted)]">{t('analytics.bestTimeframe')}</p>
+                <p className="font-medium text-[var(--positive)]">{runtimeRec.best_timeframe.timeframe}</p>
+                <p className="text-xs">PnL: ${runtimeRec.best_timeframe.net_pnl.toFixed(2)}</p>
+              </div>
+            )}
+            {runtimeRec.worst_timeframe && (
+              <div className="rounded-lg border border-white/10 bg-[var(--surface)] p-3">
+                <p className="text-[var(--text-muted)]">{t('analytics.worstTimeframe')}</p>
+                <p className="font-medium text-[var(--negative)]">{runtimeRec.worst_timeframe.timeframe}</p>
+                <p className="text-xs">PnL: ${runtimeRec.worst_timeframe.net_pnl.toFixed(2)}</p>
+              </div>
+            )}
+          </div>
+          {runtimeRec.recommendations.length > 0 && (
+            <ul className="mt-4 list-inside list-disc space-y-1 text-sm text-amber-100/90">
+              {runtimeRec.recommendations.map((rec, i) => (
+                <li key={i}>{rec}</li>
+              ))}
+            </ul>
+          )}
+        </section>
+      )}
 
       <section className="rounded-xl border border-white/10 bg-[var(--surface-muted)] p-6">
         <h3 className="mb-4 flex items-center gap-2 text-sm font-semibold text-[var(--text-muted)]">
