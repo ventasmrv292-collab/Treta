@@ -59,11 +59,13 @@ export function Dashboard() {
   const [botLogs, setBotLogs] = useState<{ id: number; level: string; event_type: string; message: string; created_at: string }[]>([])
   const [eventTypeForHelp, setEventTypeForHelp] = useState<string | null>(null)
   const [strategyOverlay, setStrategyOverlay] = useState<StrategyOverlayId | null>(null)
+  const [candlesError, setCandlesError] = useState<string | null>(null)
 
   // Carga inicial: klines, precio, cuentas paper y dashboard (o summary con cuenta)
   useEffect(() => {
     let cancelled = false
     setLoading(true)
+    setCandlesError(null)
     Promise.all([
       fetchKlines('BTCUSDT', interval, 300),
       fetchPrice('BTCUSDT'),
@@ -72,6 +74,7 @@ export function Dashboard() {
       .then(([klinesRes, priceRes, accounts]) => {
         if (cancelled) return
         setCandles(klinesRes.candles)
+        setCandlesError(null)
         setPrice(priceRes.price)
         setPaperAccounts(accounts)
         const accountId = accounts.length > 0 ? accounts[0].id : null
@@ -110,8 +113,11 @@ export function Dashboard() {
           setStreamStatus('ok')
         })
       })
-      .catch(() => {
-        if (!cancelled) setStreamStatus('idle')
+      .catch((err: Error) => {
+        if (!cancelled) {
+          setStreamStatus('idle')
+          setCandlesError(err?.message ?? 'No se pudieron cargar las velas.')
+        }
       })
       .finally(() => {
         if (!cancelled) setLoading(false)
@@ -519,6 +525,32 @@ export function Dashboard() {
           </div>
           {loading ? (
             <div className="flex h-[400px] items-center justify-center text-[var(--text-muted)]">{t('dashboard.loadingChart')}</div>
+          ) : candlesError || candles.length === 0 ? (
+            <div className="flex h-[400px] flex-col items-center justify-center gap-3 rounded-lg border border-white/10 bg-black/20 p-6 text-center">
+              <p className="text-[var(--text-muted)]">
+                {candlesError ?? t('dashboard.noCandles')}
+              </p>
+              <p className="text-xs text-[var(--text-muted)]">
+                {t('dashboard.checkBackendCandles')}
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  setCandlesError(null)
+                  setLoading(true)
+                  fetchKlines('BTCUSDT', interval, 300)
+                    .then((res) => {
+                      setCandles(res.candles)
+                      setCandlesError(null)
+                    })
+                    .catch((err: Error) => setCandlesError(err?.message ?? 'Error'))
+                    .finally(() => setLoading(false))
+                }}
+                className="rounded-lg border border-[var(--accent)] bg-[var(--accent)]/20 px-4 py-2 text-sm font-medium text-[var(--accent)] hover:bg-[var(--accent)]/30"
+              >
+                {t('dashboard.retryCandles')}
+              </button>
+            </div>
           ) : (
             <CandlestickChart
               data={candles}

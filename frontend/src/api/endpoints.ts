@@ -42,8 +42,8 @@ const qs = (params: Record<string, string | number | boolean | undefined>) => {
 export const endpoints = {
   market: {
     price: (symbol = 'BTCUSDT') => `/market/price${qs({ symbol })}`,
-    klines: (symbol = 'BTCUSDT', interval = '15m', limit = 300) =>
-      `/market/klines${qs({ symbol, interval, limit })}`,
+    klines: (symbol = 'BTCUSDT', interval = '15m', limit = 300, forceBinance = false) =>
+      `/market/klines${qs({ symbol, interval, limit, force_binance: forceBinance })}`,
   },
   trades: {
     list: (params: {
@@ -118,9 +118,13 @@ export async function fetchPrice(symbol: string) {
   return res.json() as Promise<{ symbol: string; price: string }>
 }
 
-export async function fetchKlines(symbol: string, interval: string, limit = 300) {
-  const res = await fetch(`${API_V1}${endpoints.market.klines(symbol, interval, limit)}`)
-  if (!res.ok) throw new Error('Failed to fetch klines')
+export async function fetchKlines(symbol: string, interval: string, limit = 300, forceBinance = false) {
+  const res = await fetch(`${API_V1}${endpoints.market.klines(symbol, interval, limit, forceBinance)}`)
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    const msg = (err as { detail?: string })?.detail ?? res.statusText
+    throw new Error(msg || 'Failed to fetch klines')
+  }
   return res.json() as Promise<KlinesResponse>
 }
 
