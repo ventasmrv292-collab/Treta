@@ -75,8 +75,19 @@ async def sync_candles_to_db(symbol: str, interval: str, limit: int = DEFAULT_LI
             symbol=symbol, interval=interval, limit=limit, force_binance=True
         )
     except Exception as e:
-        logger.warning("candle_sync: Binance unavailable (%s), skipping sync", e)
-        return 0
+        err_msg = f"Binance no disponible: {e}"
+        logger.warning("candle_sync: %s", err_msg)
+        async with async_session_maker() as log_session:
+            await bot_log_event(
+                log_session,
+                "ERROR",
+                MODULE_CANDLES,
+                EVENT_CANDLES_SYNC_ERROR,
+                err_msg,
+                context={"symbol": symbol, "interval": interval, "error": str(e)},
+            )
+            await log_session.commit()
+        raise RuntimeError(err_msg) from e
     if not klines:
         return 0
 
