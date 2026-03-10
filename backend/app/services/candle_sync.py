@@ -87,7 +87,8 @@ async def sync_candles_to_db(symbol: str, interval: str, limit: int = DEFAULT_LI
                 context={"symbol": symbol, "interval": interval, "error": str(e)},
             )
             await log_session.commit()
-        raise RuntimeError(err_msg) from e
+        # No re-lanzar: en regiones con 451 el job termina sin insertar; el scheduler sigue estable.
+        return 0
     if not klines:
         return 0
 
