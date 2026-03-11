@@ -44,8 +44,10 @@ class Settings(BaseSettings):
     # Binance (si en tu host da 451, prueba otra región de despliegue o BINANCE_FUTURES_REST_URL)
     binance_futures_ws_url: str = "wss://fstream.binance.com/ws"
     binance_futures_rest_url: str = "https://fapi.binance.com"
-    # Si True, no se usa nunca CoinGecko/CoinCap: solo Binance; si Binance devuelve 451/418, falla.
+    # Si True, no se usa nunca CoinGecko/CoinCap: solo Binance/Bybit; si ambos fallan, falla.
     binance_only: bool = False
+    # Si True, se intenta Bybit primero; si falla, Binance; luego CoinGecko si no binance_only.
+    bybit_first: bool = False
 
     # CORS: orígenes permitidos separados por coma (ej. https://tu-app.vercel.app).
     # En Railway/Render define CORS_ORIGINS con la URL de tu frontend en Vercel.
