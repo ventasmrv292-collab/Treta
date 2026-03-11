@@ -64,3 +64,41 @@ def vwap_snapback_v1(candles: list[dict[str, Any]], params: dict[str, Any] | Non
             metadata={"reason": "snapback_short", "ma": ma, "deviation_pct": dev_pct},
         )
     return None
+
+
+def vwap_snapback_v2(candles: list[dict[str, Any]], params: dict[str, Any] | None) -> StrategySignal | None:
+    """v2: deviation_pct 0.4, sl_factor 0.6, solo LONG; TP para RR >= min_rr_ratio."""
+    if not candles or len(candles) < 30:
+        return None
+    params = params or {}
+    ma_period = int(params.get("ma_period", 20))
+    deviation_pct = float(params.get("deviation_pct", 0.4))
+    sl_factor = float(params.get("sl_factor", 0.6))
+    min_rr = float(params.get("min_rr_ratio", 1.0))
+    timeframe = params.get("timeframe", "15m")
+
+    closes = [float(c["close"]) for c in candles]
+    last = closes[-1]
+    ma = _sma(closes, ma_period)
+    if ma <= 0:
+        return None
+    dev_pct = abs(last - ma) / ma * 100
+    if dev_pct < deviation_pct:
+        return None
+    if last >= ma:
+        return None
+    sl_dist = (ma - last) * sl_factor
+    tp_dist = sl_dist * min_rr
+    return StrategySignal(
+        strategy_family="MEAN_REVERSION",
+        strategy_name="vwap_snapback_v2",
+        strategy_version="2.0.0",
+        symbol=candles[-1].get("symbol", "BTCUSDT"),
+        timeframe=timeframe,
+        position_side="LONG",
+        entry_price=Decimal(str(last)),
+        take_profit=Decimal(str(round(last + tp_dist, 2))),
+        stop_loss=Decimal(str(round(last - sl_dist, 2))),
+        confidence=0.75,
+        metadata={"reason": "snapback_long_v2", "ma": ma, "deviation_pct": dev_pct},
+    )

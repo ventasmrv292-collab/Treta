@@ -79,9 +79,11 @@ def _signal_to_n8n_payload(
     idempotency_key: str,
     quantity: Decimal,
     leverage: int,
+    strategy_id: int | None = None,
 ) -> N8nTradeCreate:
     return N8nTradeCreate(
         source="BACKEND",
+        strategy_id=strategy_id,
         symbol=signal.symbol,
         market="PERP",
         strategy_family=signal.strategy_family,
@@ -105,16 +107,41 @@ def _signal_to_n8n_payload(
     )
 
 
+def _validate_signal_limits(
+    signal: StrategySignal,
+    cfg: StrategyRuntimeConfig,
+) -> tuple[bool, str]:
+    """Valida min_stop_distance_pct y min_rr_ratio. Retorna (ok, reason)."""
+    entry = float(signal.entry_price)
+    if entry <= 0:
+        return False, "INVALID_ENTRY_PRICE"
+    stop = float(signal.stop_loss) if signal.stop_loss else None
+    tp = float(signal.take_profit) if signal.take_profit else None
+    if stop is None:
+        return True, ""
+    risk_dist = abs(entry - stop)
+    stop_pct = (risk_dist / entry) * 100
+    if cfg.min_stop_distance_pct is not None and stop_pct < float(cfg.min_stop_distance_pct):
+        return False, f"STOP_TOO_CLOSE: stop_dist_pct={round(stop_pct, 4)}% < min={cfg.min_stop_distance_pct}"
+    if cfg.min_rr_ratio is not None and tp is not None and risk_dist > 0:
+        reward_dist = abs(tp - entry)
+        rr = reward_dist / risk_dist
+        if rr < float(cfg.min_rr_ratio):
+            return False, f"RR_BELOW_MIN: rr={round(rr, 2)} < min_rr_ratio={cfg.min_rr_ratio}"
+    return True, ""
+
+
 async def _execute_signal(
     session: AsyncSession,
     signal: StrategySignal,
     account_id: int | None,
     risk_profile_id: int | None,
     strategy_id: int | None = None,
+    runtime_cfg: StrategyRuntimeConfig | None = None,
 ) -> Trade | None:
     """Crea signal_event, valida riesgo y capital, crea trade y ledger. Retorna trade si se abrió, None si rechazado."""
     idempotency_key = f"backend|{signal.strategy_family}|{signal.strategy_name}|{signal.timeframe}|{signal.entry_price}|{signal.symbol}"
-    payload = _signal_to_n8n_payload(signal, account_id, risk_profile_id, idempotency_key, DEFAULT_QUANTITY, DEFAULT_LEVERAGE)
+    payload = _signal_to_n8n_payload(signal, account_id, risk_profile_id, idempotency_key, DEFAULT_QUANTITY, DEFAULT_LEVERAGE, strategy_id=strategy_id)
     payload_json = json.dumps({
         "position_side": signal.position_side,
         "entry_price": str(signal.entry_price),
@@ -135,6 +162,23 @@ async def _execute_signal(
     )
     session.add(signal_event)
     await session.flush()
+
+    if runtime_cfg is not None:
+        ok, reason = _validate_signal_limits(signal, runtime_cfg)
+        if not ok:
+            signal_event.status = "REJECTED"
+            signal_event.decision_reason = reason
+            await bot_log_event(
+                session,
+                "WARN",
+                MODULE_STRATEGY,
+                EVENT_SIGNAL_REJECTED,
+                f"Signal rejected (limits): {reason}",
+                context={"reason": reason, "strategy": signal.strategy_name, "timeframe": signal.timeframe},
+                related_signal_event_id=signal_event.id,
+            )
+            await session.commit()
+            return None
 
     try:
         data_override = await prepare_n8n_trade(session, payload)
@@ -301,7 +345,7 @@ async def run_strategies_for_timeframe(interval: str) -> list[Trade]:
                             )
                             await exec_session.commit()
                             continue
-                    trade = await _execute_signal(exec_session, signal, account_id, risk_profile_id, strategy_id=strat.id)
+                    trade = await _execute_signal(exec_session, signal, account_id, risk_profile_id, strategy_id=strat.id, runtime_cfg=cfg)
                     if trade:
                         opened.append(trade)
             except Exception as e:

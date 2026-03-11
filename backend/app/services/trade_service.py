@@ -10,11 +10,13 @@ from app.models.trade import Trade
 from app.models.fee_config import FeeConfig
 from app.models.paper_account import PaperAccount
 from app.models.risk_profile import RiskProfile
+from app.models.strategy_runtime_config import StrategyRuntimeConfig
 from app.services.fee_engine import FeeEngine, FeeProfile
 from app.services.trading_capital import (
     calc_entry_fee,
     calc_margin_used,
     validate_can_open_trade,
+    cap_quantity_to_limits,
 )
 from app.services.risk_management import (
     validate_risk_limits,
@@ -246,6 +248,8 @@ def n8n_create_to_trade(d: N8nTradeCreate, data_override: dict | None = None) ->
         out["fee_config_id"] = d.fee_config_id
     if getattr(d, "risk_profile_id", None) is not None:
         out["risk_profile_id"] = d.risk_profile_id
+    if getattr(d, "strategy_id", None) is not None:
+        out["strategy_id"] = d.strategy_id
     if getattr(d, "idempotency_key", None):
         out["idempotency_key"] = d.idempotency_key
     if data_override:
@@ -299,6 +303,57 @@ async def prepare_n8n_trade(session: AsyncSession, payload: N8nTradeCreate) -> d
     engine = await get_default_fee_engine(session)
     rate = engine.config.taker_rate()
     entry_fee = calc_entry_fee(entry_notional, rate)
+
+    # Cap quantity to profile/equity limits before rejecting
+    if account_id is not None and profile is not None:
+        acc = (await session.execute(select(PaperAccount).where(PaperAccount.id == account_id))).scalar_one_or_none()
+        if acc:
+            equity_cap = (acc.current_balance_usdt or 0) + (acc.unrealized_pnl_usdt or 0)
+            max_margin_pct = getattr(profile, "max_margin_pct_of_account", None) or Decimal("12")
+            qty_capped = cap_quantity_to_limits(
+                qty,
+                entry_price,
+                payload.leverage,
+                equity_cap,
+                getattr(profile, "max_notional_usdt", None),
+                getattr(profile, "max_notional_pct_of_equity", None),
+                max_margin_pct,
+            )
+            if qty_capped < qty:
+                qty = qty_capped
+                entry_notional = (qty * entry_price).quantize(Decimal("0.0001"))
+                margin_used = calc_margin_used(entry_notional, payload.leverage)
+                entry_fee = calc_entry_fee(entry_notional, rate)
+            min_qty = Decimal("0.0001")
+            if qty < min_qty:
+                raise ValueError(
+                    f"SIZE_CAPPED_BELOW_MIN: quantity capped to {qty} (min {min_qty}); limits exceeded"
+                )
+
+    # Slippage check from runtime config (when strategy_id present)
+    strategy_id = getattr(payload, "strategy_id", None)
+    if strategy_id is not None and entry_notional > 0:
+        rtc = (
+            await session.execute(
+                select(StrategyRuntimeConfig).where(
+                    StrategyRuntimeConfig.strategy_id == strategy_id,
+                    StrategyRuntimeConfig.symbol == payload.symbol,
+                    StrategyRuntimeConfig.timeframe == payload.timeframe,
+                )
+            )
+        ).scalar_one_or_none()
+        if rtc and (rtc.max_slippage_usdt_estimated is not None or rtc.max_slippage_pct_of_notional is not None):
+            slippage_bps = float(getattr(engine.config, "slippage_bps", 5) or 5)
+            slippage_est_usdt = (entry_notional * Decimal(str(slippage_bps / 10000)) * 2).quantize(Decimal("0.01"))
+            slippage_pct = (slippage_est_usdt / entry_notional * 100) if entry_notional else Decimal("0")
+            if rtc.max_slippage_usdt_estimated is not None and slippage_est_usdt > rtc.max_slippage_usdt_estimated:
+                raise ValueError(
+                    f"SLIPPAGE_ESTIMATE_EXCEEDED: estimated {slippage_est_usdt} USDT > max {rtc.max_slippage_usdt_estimated}"
+                )
+            if rtc.max_slippage_pct_of_notional is not None and slippage_pct > rtc.max_slippage_pct_of_notional:
+                raise ValueError(
+                    f"SLIPPAGE_PCT_EXCEEDED: estimated {round(float(slippage_pct), 4)}% > max {rtc.max_slippage_pct_of_notional}%"
+                )
 
     fee_config_id = await get_default_fee_config_id(session)
     data_override = {

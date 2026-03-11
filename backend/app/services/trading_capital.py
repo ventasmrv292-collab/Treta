@@ -67,6 +67,39 @@ def calc_margin_used(entry_notional: Decimal, leverage: int) -> Decimal:
     return (entry_notional / Decimal(str(leverage))).quantize(Decimal("0.0001"))
 
 
+def cap_quantity_to_limits(
+    quantity: Decimal,
+    entry_price: Decimal,
+    leverage: int,
+    equity: Decimal,
+    max_notional_usdt: Decimal | None,
+    max_notional_pct_of_equity: Decimal | None,
+    max_margin_pct_of_equity: Decimal | None,
+) -> Decimal:
+    """
+    Cap quantity para que notional y margen no superen los límites.
+    max_* None = sin límite. Devuelve min(quantity, qty_max).
+    """
+    if entry_price is None or entry_price <= 0 or equity <= 0:
+        return quantity
+    notional_cap: Decimal | None = None
+    if max_notional_usdt is not None and max_notional_usdt > 0:
+        notional_cap = max_notional_usdt
+    if max_notional_pct_of_equity is not None and max_notional_pct_of_equity > 0:
+        cap_pct = equity * (max_notional_pct_of_equity / Decimal("100"))
+        notional_cap = min(notional_cap, cap_pct) if notional_cap is not None else cap_pct
+    margin_cap: Decimal | None = None
+    if max_margin_pct_of_equity is not None and max_margin_pct_of_equity > 0 and leverage > 0:
+        margin_cap = equity * (max_margin_pct_of_equity / Decimal("100"))
+        notional_by_margin = margin_cap * Decimal(str(leverage))
+        notional_cap = min(notional_cap, notional_by_margin) if notional_cap is not None else notional_by_margin
+    if notional_cap is None or notional_cap <= 0:
+        return quantity
+    qty_max = (notional_cap / entry_price).quantize(Decimal("0.00000001"))
+    capped = min(quantity, qty_max)
+    return max(capped, Decimal("0"))
+
+
 def validate_can_open_trade(
     available_balance_usdt: Decimal,
     margin_used_usdt: Decimal,
