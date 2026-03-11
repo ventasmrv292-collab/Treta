@@ -1,4 +1,4 @@
-"""Market data service - Binance Futures (read-only). Fallback a CoinGecko si Binance devuelve 451."""
+"""Market data service - Binance Futures (read-only). Fallback a Bybit si Binance falla; luego CoinGecko si aplica."""
 import logging
 import time
 from datetime import datetime, timezone
@@ -11,12 +11,25 @@ from app.config import settings
 
 logger = logging.getLogger(__name__)
 
+BYBIT_BASE_URL = "https://api.bybit.com"
+
 INTERVAL_MAP = {
     "1m": "1m",
     "5m": "5m",
     "15m": "15m",
     "1h": "1h",
 }
+
+# Bybit v5: interval en minutos (1, 5, 15, 60) o D, W, M
+BYBIT_INTERVAL_MAP = {
+    "1m": "1",
+    "5m": "5",
+    "15m": "15",
+    "1h": "60",
+}
+
+# Duración en ms por intervalo para close_time
+INTERVAL_MS = {"1m": 60_000, "5m": 300_000, "15m": 900_000, "1h": 3_600_000}
 
 COINGECKO_IDS = {"BTCUSDT": "bitcoin", "BTC": "bitcoin"}
 
@@ -70,6 +83,65 @@ def _parse_kline(row: list[Any]) -> dict[str, Any]:
     if len(row) > 10 and row[10] is not None:
         out["taker_buy_quote_volume"] = Decimal(str(row[10]))
     return out
+
+
+def _parse_bybit_kline(row: list[Any], interval_key: str) -> dict[str, Any]:
+    """Bybit v5: [startTime, open, high, low, close, volume, turnover]. startTime en ms."""
+    start_ms = int(row[0])
+    interval_ms = INTERVAL_MS.get(interval_key, 900_000)
+    close_time_dt = datetime.fromtimestamp((start_ms + interval_ms) / 1000, tz=timezone.utc)
+    return {
+        "open_time": datetime.fromtimestamp(start_ms / 1000, tz=timezone.utc),
+        "open": Decimal(str(row[1])),
+        "high": Decimal(str(row[2])),
+        "low": Decimal(str(row[3])),
+        "close": Decimal(str(row[4])),
+        "volume": Decimal(str(row[5])),
+        "close_time": close_time_dt,
+        "quote_volume": Decimal(str(row[6])) if len(row) > 6 and row[6] is not None else None,
+    }
+
+
+async def _klines_from_bybit(
+    symbol: str = "BTCUSDT",
+    interval: str = "15m",
+    limit: int = 500,
+) -> list[dict[str, Any]]:
+    """Velas desde Bybit v5 (linear perpetual). Mismo formato que Binance."""
+    bybit_interval = BYBIT_INTERVAL_MAP.get(interval, "15")
+    params: dict[str, Any] = {
+        "category": "linear",
+        "symbol": symbol,
+        "interval": bybit_interval,
+        "limit": min(limit, 1000),
+    }
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        r = await client.get(f"{BYBIT_BASE_URL}/v5/market/kline", params=params)
+        r.raise_for_status()
+        data = r.json()
+    if data.get("retCode") != 0:
+        raise RuntimeError(data.get("retMsg", "Bybit error"))
+    rows = data.get("result", {}).get("list", [])
+    # Bybit devuelve más reciente primero; invertir para orden cronológico
+    rows = list(reversed(rows))
+    return [_parse_bybit_kline(row, interval) for row in rows]
+
+
+async def _price_from_bybit(symbol: str = "BTCUSDT") -> Decimal:
+    """Precio actual desde Bybit v5 (linear perpetual)."""
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        r = await client.get(
+            f"{BYBIT_BASE_URL}/v5/market/tickers",
+            params={"category": "linear", "symbol": symbol},
+        )
+        r.raise_for_status()
+        data = r.json()
+    if data.get("retCode") != 0:
+        raise RuntimeError(data.get("retMsg", "Bybit error"))
+    items = data.get("result", {}).get("list", [])
+    if not items:
+        raise ValueError("Bybit: sin datos de ticker")
+    return Decimal(str(items[0]["lastPrice"]))
 
 
 async def _price_from_coincap(symbol: str) -> Decimal:
@@ -181,14 +253,16 @@ class MarketDataService:
         end_time: int | None = None,
         force_binance: bool = False,
     ) -> list[dict[str, Any]]:
-        """Get historical klines. Si force_binance=True no usa CoinGecko (para ingesta DB: solo velas Binance con intervalos correctos)."""
+        """Get historical klines. Binance primero; si falla, Bybit (salvo BINANCE_ONLY); luego CoinGecko si aplica."""
         if self._use_coingecko and not force_binance:
             return await _klines_from_coingecko(symbol, limit)
+        binance_only = getattr(settings, "binance_only", False)
+        binance_error: Exception | None = None
         try:
-            interval = INTERVAL_MAP.get(interval, interval)
+            interval_b = INTERVAL_MAP.get(interval, interval)
             params: dict[str, Any] = {
                 "symbol": symbol,
-                "interval": interval,
+                "interval": interval_b,
                 "limit": min(limit, 1500),
             }
             if start_time:
@@ -200,18 +274,30 @@ class MarketDataService:
                 r.raise_for_status()
                 data = r.json()
             return [_parse_kline(row) for row in data]
-        except httpx.HTTPStatusError as e:
-            if e.response.status_code == 451 and not force_binance and not getattr(settings, "binance_only", False):
-                logger.warning("Binance 451 (bloqueo regional), usando CoinGecko para velas")
-                return await _klines_from_coingecko(symbol, limit)
-            raise
-        except Exception:
-            raise
+        except Exception as e:
+            binance_error = e
+            if binance_only:
+                raise
+            logger.warning("Binance klines falló (%s), intentando Bybit", e)
+        try:
+            klines = await _klines_from_bybit(symbol=symbol, interval=interval, limit=limit)
+            logger.info("Bybit klines OK: %d velas para %s %s", len(klines), symbol, interval)
+            return klines
+        except Exception as bybit_err:
+            logger.warning("Bybit klines falló: %s", bybit_err)
+            if not force_binance and not binance_only and binance_error:
+                try:
+                    return await _klines_from_coingecko(symbol, limit)
+                except Exception:
+                    pass
+            raise binance_error or bybit_err
 
     async def get_current_price(self, symbol: str = "BTCUSDT") -> Decimal:
-        """Get latest price. En Render usa CoinGecko; si no, Binance con fallback 451."""
+        """Get latest price. Binance primero; si falla, Bybit (salvo BINANCE_ONLY); luego CoinGecko si aplica."""
         if self._use_coingecko:
             return await _price_from_coingecko(symbol)
+        binance_only = getattr(settings, "binance_only", False)
+        binance_error: Exception | None = None
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
                 r = await client.get(
@@ -221,10 +307,20 @@ class MarketDataService:
                 r.raise_for_status()
                 data = r.json()
             return Decimal(data["price"])
-        except httpx.HTTPStatusError as e:
-            if e.response.status_code == 451 and not getattr(settings, "binance_only", False):
-                logger.warning("Binance 451 (bloqueo regional), usando CoinGecko para precio")
-                return await _price_from_coingecko(symbol)
-            raise
-        except Exception:
-            raise
+        except Exception as e:
+            binance_error = e
+            if binance_only:
+                raise
+            logger.warning("Binance price falló (%s), intentando Bybit", e)
+        try:
+            price = await _price_from_bybit(symbol)
+            logger.info("Bybit price OK: %s %s", symbol, price)
+            return price
+        except Exception as bybit_err:
+            logger.warning("Bybit price falló: %s", bybit_err)
+            if not binance_only and binance_error:
+                try:
+                    return await _price_from_coingecko(symbol)
+                except Exception:
+                    pass
+            raise binance_error or bybit_err
