@@ -116,7 +116,7 @@ export const endpoints = {
 export async function fetchPrice(symbol: string) {
   const res = await fetch(`${API_V1}${endpoints.market.price(symbol)}`)
   if (!res.ok) throw new Error('Failed to fetch price')
-  return res.json() as Promise<{ symbol: string; price: string }>
+  return res.json() as Promise<{ symbol: string; price: string; source?: string }>
 }
 
 export async function fetchKlines(symbol: string, interval: string, limit = 300, forceBinance = false) {

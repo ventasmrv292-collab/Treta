@@ -60,6 +60,8 @@ export function Dashboard() {
   const [eventTypeForHelp, setEventTypeForHelp] = useState<string | null>(null)
   const [strategyOverlay, setStrategyOverlay] = useState<StrategyOverlayId | null>(null)
   const [candlesError, setCandlesError] = useState<string | null>(null)
+  /** Fuente actual de datos de mercado (binance, bybit, coingecko). */
+  const [marketDataSource, setMarketDataSource] = useState<string | null>(null)
 
   // Carga inicial: klines, precio, cuentas paper y dashboard (o summary con cuenta)
   useEffect(() => {
@@ -76,6 +78,7 @@ export function Dashboard() {
         setCandles(klinesRes.candles)
         setCandlesError(null)
         setPrice(priceRes.price)
+        setMarketDataSource(klinesRes.source ?? priceRes.source ?? null)
         setPaperAccounts(accounts)
         const accountId = accounts.length > 0 ? accounts[0].id : null
         setSelectedAccountId(accountId)
@@ -164,6 +167,7 @@ export function Dashboard() {
         fetchPrice('BTCUSDT')
           .then((r) => {
             setPrice(r.price)
+            if (r.source) setMarketDataSource(r.source)
             schedule(PRICE_REFRESH_MS)
           })
           .catch(() => schedule(PRICE_BACKOFF_MS))
@@ -177,7 +181,10 @@ export function Dashboard() {
   useEffect(() => {
     const t = setInterval(() => {
       fetchKlines('BTCUSDT', interval, 300)
-        .then((res) => setCandles(res.candles))
+        .then((res) => {
+          setCandles(res.candles)
+          if (res.source) setMarketDataSource(res.source)
+        })
         .catch(() => {})
     }, CHART_REFRESH_MS)
     return () => clearInterval(t)
@@ -281,6 +288,11 @@ export function Dashboard() {
             <Activity className="h-3 w-3" />
             {streamStatus === 'ok' ? t('dashboard.liveData') : t('common.loading')}
           </span>
+          {marketDataSource && (
+            <span className="flex items-center gap-1 rounded-full bg-slate-600/40 px-2 py-0.5 text-xs text-[var(--text-muted)]" title={t('dashboard.dataSource')}>
+              {t('dashboard.dataSource')}: {marketDataSource === 'binance' ? t('dashboard.dataSourceBinance') : marketDataSource === 'bybit' ? t('dashboard.dataSourceBybit') : t('dashboard.dataSourceCoingecko')}
+            </span>
+          )}
         </div>
       </div>
 
@@ -508,6 +520,7 @@ export function Dashboard() {
                   key={id}
                   type="button"
                   onClick={() => setStrategyOverlay(strategyOverlay === id ? null : id)}
+                  title={t(`dashboard.indicatorsTooltip.${id}`)}
                   className={`rounded-lg border px-2.5 py-1 text-xs font-medium transition-colors ${
                     strategyOverlay === id
                       ? 'border-[var(--accent)] bg-[var(--accent)]/20 text-[var(--accent)]'
@@ -521,6 +534,7 @@ export function Dashboard() {
                 <button
                   type="button"
                   onClick={() => setStrategyOverlay(null)}
+                  title={t('dashboard.indicatorsTooltip.none')}
                   className="rounded-lg border border-white/10 bg-white/5 px-2.5 py-1 text-xs font-medium text-[var(--text-muted)] hover:bg-white/10 hover:text-[var(--text)]"
                 >
                   {t('dashboard.strategyOverlay.none')}
@@ -547,6 +561,7 @@ export function Dashboard() {
                     .then((res) => {
                       setCandles(res.candles)
                       setCandlesError(null)
+                      if (res.source) setMarketDataSource(res.source)
                     })
                     .catch((err: Error) => setCandlesError(err?.message ?? 'Error'))
                     .finally(() => setLoading(false))
@@ -563,6 +578,8 @@ export function Dashboard() {
               onCrosshairMove={setCrosshairPrice}
               livePrice={livePrice}
               strategyOverlay={strategyOverlay}
+              indicatorName={strategyOverlay ? t(`dashboard.strategyOverlay.${strategyOverlay}`) : undefined}
+              indicatorDescription={strategyOverlay ? t(`dashboard.indicatorsTooltip.${strategyOverlay}`) : undefined}
             />
           )}
         </div>

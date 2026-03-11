@@ -74,6 +74,16 @@
       "vwap_snapback": "VWAP",
       "ema_pullback": "EMA",
       "none": "Ninguno"
+    },
+    "dataSource": "Fuente de datos",
+    "dataSourceBinance": "Binance",
+    "dataSourceBybit": "Bybit",
+    "dataSourceCoingecko": "CoinGecko",
+    "indicatorsTooltip": {
+      "breakout": "Volumen, media móvil del volumen y máximo reciente de máximos. La estrategia Breakout usa estos datos para detectar rupturas con volumen.",
+      "vwap_snapback": "Media móvil del cierre (proxy de VWAP). La estrategia VWAP Snapback usa la desviación del precio a esta línea para generar señales.",
+      "ema_pullback": "EMA del cierre. La estrategia EMA Pullback busca toques o aproximaciones del precio a esta línea en tendencia.",
+      "none": "Sin overlay de indicadores en el gráfico."
     }
   },
   "history": {
@@ -219,7 +229,8 @@
     "strategiesSection": "Las 3 estrategias automáticas",
     "eventsSection": "Eventos del log del bot",
     "glossarySection": "Glosario de términos",
-    "howItWorksLabel": "Cómo funciona"
+    "howItWorksLabel": "Cómo funciona",
+    "changesFromV1Label": "Cambios respecto a v1"
   },
   "strategies": {
     "breakout_volume_v1": {
@@ -227,15 +238,33 @@
       "short": "Abre LONG cuando el precio cierra por encima de un máximo reciente y el volumen es alto.",
       "howItWorks": "La estrategia mira las últimas velas (por ejemplo 10–20). Si el cierre de la vela actual supera el máximo de ese periodo y el volumen de la vela es mayor que la media reciente de volumen, considera que hay un \"breakout\" alcista y genera una señal LONG. Define take profit y stop loss a partir de la distancia típica del precio (ATR). Solo opera en 1m, 5m o 15m según el job que esté corriendo."
     },
+    "breakout_volume_v2": {
+      "title": "Breakout por volumen (v2)",
+      "short": "Igual concepto que v1 con stop más amplio (ATR 1,2%), lookback 14 y volumen 1,4x. Solo LONG, activa en 15m.",
+      "howItWorks": "La estrategia v2 usa un lookback de 14 velas y exige que el cierre supere el máximo de ese periodo con volumen al menos 1,4 veces la media reciente. El stop loss se calcula con ATR al 1,2% (más amplio que v1) para reducir salidas por ruido. El take profit se ajusta para respetar un ratio riesgo/recompensa mínimo (p. ej. 1,2:1). Solo opera LONG y por defecto está activa en 15m.",
+      "changesFromV1": "Respecto a v1: stop más lejos (ATR 1,2% en lugar de más corto), lookback 14, multiplicador de volumen 1,4; validación de distancia mínima al stop y de ratio R:R; solo LONG; activa inicialmente solo en 15m (5m preparado pero desactivado)."
+    },
     "vwap_snapback_v1": {
       "title": "Snapback a la media (VWAP)",
       "short": "Aprovecha cuando el precio se aleja de la media y \"vuelve\" hacia ella.",
       "howItWorks": "Calcula una media móvil del precio (actúa como referencia tipo VWAP). Si el precio se desvía de esa media por encima de un porcentaje mínimo (por ejemplo 0,3%), la estrategia asume que puede volver: si está por debajo de la media genera señal LONG (subida hacia la media), si está por encima genera señal SHORT (bajada hacia la media). El take profit suele ser la propia media y el stop loss a mitad de camino entre precio y media."
     },
+    "vwap_snapback_v2": {
+      "title": "Snapback a la media (VWAP) (v2)",
+      "short": "Desviación 0,4%, factor de stop 0,6. Solo LONG en 5m y 15m, con validación de R:R.",
+      "howItWorks": "Calcula la media móvil del precio (proxy VWAP). Si el precio se desvía por debajo de la media al menos un 0,4%, genera señal LONG (vuelta hacia la media). El stop se coloca con factor 0,6 respecto a la distancia precio–media. El take profit asegura un ratio riesgo/recompensa mínimo. Solo opera LONG; activa en 5m y 15m con cooldown de 5 minutos.",
+      "changesFromV1": "Respecto a v1: parámetros de desviación (0,4%) y factor de stop (0,6) afinados; solo LONG (SHORT desactivado); validación min_rr_ratio; activa en 5m y 15m; cooldown entre señales."
+    },
     "ema_pullback_v1": {
       "title": "Pullback a la EMA en tendencia",
       "short": "Entra cuando el precio en tendencia hace un retroceso a la EMA y rebota.",
       "howItWorks": "Calcula una EMA (por ejemplo 20 periodos). Si la EMA está subiendo (tendencia alcista) y el precio se acerca a la EMA desde arriba y la toca o se acerca mucho, genera señal LONG (pullback en alcista). Si la EMA está bajando y el precio se acerca a la EMA desde abajo, genera señal SHORT. Take profit y stop loss se ponen según la distancia a la EMA. Solo entra cuando hay \"toque\" o proximidad a la EMA dentro de un pequeño porcentaje."
+    },
+    "ema_pullback_v2": {
+      "title": "Pullback a la EMA (v2)",
+      "short": "Toque/proximidad 0,2%, distancias mínimas a EMA y al stop. Por defecto pausada hasta validar.",
+      "howItWorks": "Calcula la EMA del cierre. En tendencia alcista, si el precio se acerca a la EMA desde arriba (toque o proximidad del 0,2%) genera señal LONG; en tendencia bajista, proximidad desde abajo genera SHORT. La v2 exige una distancia mínima a la EMA y al stop (0,25%) para evitar entradas con stop demasiado corto. Take profit con ratio R:R mínimo. Por defecto está pausada hasta validar en backtest/paper.",
+      "changesFromV1": "Respecto a v1: distancias mínimas (min_ema_dist_pct 0,2%, min_sl_dist_pct 0,25%); validación de R:R; pausada por defecto hasta validar sizing y slippage."
     }
   },
   "glossary": {

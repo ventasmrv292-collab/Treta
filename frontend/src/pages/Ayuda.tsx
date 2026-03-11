@@ -77,6 +77,14 @@ export function Ayuda() {
                   </p>
                   <p className="text-sm text-[var(--text-muted)]">{t(`strategies.${s.id}.howItWorks`)}</p>
                 </div>
+                {s.isV2 && (
+                  <div className="border-t border-white/5 pt-2 mt-2">
+                    <p className="text-xs font-medium text-[var(--accent)] uppercase tracking-wide mb-1">
+                      {t('ayuda.changesFromV1Label')}
+                    </p>
+                    <p className="text-sm text-[var(--text-muted)]">{t(`strategies.${s.id}.changesFromV1`)}</p>
+                  </div>
+                )}
               </div>
             ))}
           </div>
