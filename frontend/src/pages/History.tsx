@@ -192,6 +192,7 @@ export function History() {
               <th className="p-3 font-medium">{t('history.capBefore')}</th>
               <th className="p-3 font-medium">{t('history.capAfter')}</th>
               <th className="p-3 font-medium">{t('history.strategy')}</th>
+              <th className="p-3 font-medium">{t('history.version')}</th>
               <th className="p-3 font-medium">{t('history.tf')}</th>
               <th className="p-3 font-medium">{t('history.ls')}</th>
               <th className="p-3 font-medium">{t('history.entry')}</th>
@@ -211,7 +212,7 @@ export function History() {
           <tbody>
             {trades.length === 0 && (
               <tr>
-                <td colSpan={23} className="p-8 text-center text-[var(--text-muted)]">
+                <td colSpan={24} className="p-8 text-center text-[var(--text-muted)]">
                   {t('history.noTrades')}
                 </td>
               </tr>
@@ -227,6 +228,11 @@ export function History() {
                 <td className="p-3">{trade.capital_before_usdt != null ? `$${parseFloat(trade.capital_before_usdt).toFixed(2)}` : '—'}</td>
                 <td className="p-3">{trade.capital_after_usdt != null ? `$${parseFloat(trade.capital_after_usdt).toFixed(2)}` : '—'}</td>
                 <td className="p-3">{trade.strategy_name}</td>
+                <td className="p-3">
+                  <span className={trade.strategy_version?.startsWith('2') ? 'text-[var(--accent)] font-medium' : ''}>
+                    {trade.strategy_version ?? '—'}
+                  </span>
+                </td>
                 <td className="p-3">{trade.timeframe}</td>
                 <td className="p-3">{trade.position_side}</td>
                 <td className="p-3">{trade.entry_price}</td>

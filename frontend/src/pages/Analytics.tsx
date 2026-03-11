@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react'
-import { fetchAnalytics, fetchRuntimeRecommendations, type RuntimeRecommendations } from '../api/endpoints'
+import { fetchAnalytics, fetchRuntimeRecommendations, fetchByStrategyVersion, type RuntimeRecommendations, type StrategyVersionRow } from '../api/endpoints'
 import { USE_SUPABASE } from '../config'
 import { useI18n } from '../contexts/I18nContext'
-import { BarChart3, TrendingUp, PieChart } from 'lucide-react'
+import { BarChart3, TrendingUp, PieChart, GitCompare } from 'lucide-react'
 
 interface StrategyComparison {
   strategy_name: string
   strategy_family: string
+  strategy_version?: string
   total_trades: number
   net_pnl: string
   gross_pnl: string
@@ -78,6 +79,7 @@ export function Analytics() {
   const { t } = useI18n()
   const [byStrategy, setByStrategy] = useState<StrategyComparison[]>([])
   const [byLeverage, setByLeverage] = useState<LeverageComparison[]>([])
+  const [byStrategyVersion, setByStrategyVersion] = useState<StrategyVersionRow[]>([])
   const [equityCurve, setEquityCurve] = useState<{ time: string; equity: number }[]>([])
   const [runtimeRec, setRuntimeRec] = useState<RuntimeRecommendations | null>(null)
   const [loading, setLoading] = useState(true)
@@ -86,13 +88,20 @@ export function Analytics() {
   const load = () => {
     setError(null)
     setLoading(true)
-    Promise.all([fetchAnalytics(), fetchRuntimeRecommendations(7).catch(() => null)])
-      .then(([analytics, rec]) => {
+    const all = USE_SUPABASE
+      ? Promise.all([fetchAnalytics(), fetchRuntimeRecommendations(7).catch(() => null)])
+      : Promise.all([fetchAnalytics(), fetchRuntimeRecommendations(7).catch(() => null), fetchByStrategyVersion().catch(() => [])])
+    all
+      .then((results) => {
+        const analytics = results[0]
+        const rec = results[1] as RuntimeRecommendations | null
+        const v2 = results[2] as StrategyVersionRow[] | undefined
         const { byStrategy: strat, byLeverage: lev, equityCurve: curve } = analytics
         setByStrategy(strat ?? [])
         setByLeverage(lev ?? [])
         setEquityCurve(curve?.points ?? [])
         setRuntimeRec(rec ?? null)
+        if (Array.isArray(v2)) setByStrategyVersion(v2)
       })
       .catch((e) => {
         setError(e instanceof Error ? e.message : 'No se pudieron cargar las analíticas')
@@ -207,6 +216,7 @@ export function Analytics() {
                 <tr className="text-left text-[var(--text-muted)]">
                   <th className="pb-2 font-medium">{t('analytics.strategy')}</th>
                   <th className="pb-2 font-medium">{t('analytics.family')}</th>
+                  <th className="pb-2 font-medium">{t('analytics.version')}</th>
                   <th className="pb-2 font-medium">{t('analytics.trades')}</th>
                   <th className="pb-2 font-medium">{t('analytics.netPnl')}</th>
                   <th className="pb-2 font-medium">{t('analytics.fees')}</th>
@@ -216,9 +226,14 @@ export function Analytics() {
               </thead>
               <tbody>
                 {byStrategy.map((s) => (
-                  <tr key={`${s.strategy_family}|${s.strategy_name}`} className="border-t border-white/5">
+                  <tr key={`${s.strategy_family}|${s.strategy_name}|${s.strategy_version ?? ''}`} className="border-t border-white/5">
                     <td className="py-2">{s.strategy_name}</td>
                     <td className="py-2">{s.strategy_family}</td>
+                    <td className="py-2">
+                      <span className={s.strategy_version?.startsWith('2') ? 'text-[var(--accent)] font-medium' : ''}>
+                        {s.strategy_version ?? '—'}
+                      </span>
+                    </td>
                     <td className="py-2">{s.total_trades}</td>
                     <td className={`py-2 font-medium ${parseFloat(s.net_pnl) >= 0 ? 'text-[var(--positive)]' : 'text-[var(--negative)]'}`}>
                       ${parseFloat(s.net_pnl).toFixed(2)}
@@ -233,6 +248,52 @@ export function Analytics() {
           </div>
         )}
       </section>
+
+      {!USE_SUPABASE && byStrategyVersion.length > 0 && (
+        <section className="rounded-xl border border-[var(--accent)]/20 bg-[var(--surface-muted)] p-6">
+          <h3 className="mb-2 flex items-center gap-2 text-sm font-semibold text-[var(--accent)]">
+            <GitCompare className="h-4 w-4" />
+            {t('analytics.v1vsV2')}
+          </h3>
+          <p className="mb-4 text-xs text-[var(--text-muted)]">{t('analytics.v1vsV2Desc')}</p>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-[var(--text-muted)]">
+                  <th className="pb-2 font-medium">{t('analytics.strategy')}</th>
+                  <th className="pb-2 font-medium">{t('analytics.version')}</th>
+                  <th className="pb-2 font-medium">{t('analytics.timeframe')}</th>
+                  <th className="pb-2 font-medium">{t('analytics.side')}</th>
+                  <th className="pb-2 font-medium">{t('analytics.trades')}</th>
+                  <th className="pb-2 font-medium">{t('analytics.netPnl')}</th>
+                  <th className="pb-2 font-medium">{t('analytics.slippageTotal')}</th>
+                  <th className="pb-2 font-medium">{t('analytics.winRatePct')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {byStrategyVersion.map((row, i) => (
+                  <tr key={i} className="border-t border-white/5">
+                    <td className="py-2">{row.strategy_name}</td>
+                    <td className="py-2">
+                      <span className={row.strategy_version.startsWith('2') ? 'text-[var(--accent)] font-medium' : ''}>
+                        {row.strategy_version}
+                      </span>
+                    </td>
+                    <td className="py-2">{row.timeframe}</td>
+                    <td className="py-2">{row.position_side}</td>
+                    <td className="py-2">{row.total_trades}</td>
+                    <td className={`py-2 font-medium ${parseFloat(row.net_pnl) >= 0 ? 'text-[var(--positive)]' : 'text-[var(--negative)]'}`}>
+                      ${parseFloat(row.net_pnl).toFixed(2)}
+                    </td>
+                    <td className="py-2">${parseFloat(row.total_slippage_usdt).toFixed(2)}</td>
+                    <td className="py-2">{row.win_rate.toFixed(1)}%</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
 
       <section className="rounded-xl border border-white/10 bg-[var(--surface-muted)] p-6">
         <h3 className="mb-4 flex items-center gap-2 text-sm font-semibold text-[var(--text-muted)]">

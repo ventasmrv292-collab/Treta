@@ -78,6 +78,7 @@ export const endpoints = {
     dashboardSummary: (accountId?: number) =>
       accountId != null ? `/analytics/dashboard-summary${qs({ account_id: accountId })}` : '/analytics/dashboard-summary',
     byStrategy: () => '/analytics/by-strategy',
+    byStrategyVersion: () => '/analytics/by-strategy-version',
     byLeverage: () => '/analytics/by-leverage',
     equityCurve: (period?: string) => `/analytics/equity-curve${qs({ period: period || 'all' })}`,
     runtimeRecommendations: (days?: number) => `/analytics/runtime-recommendations${qs({ days: days ?? 7 })}`,
@@ -193,6 +194,25 @@ export async function fetchAnalytics(): Promise<{
   return { byStrategy, byLeverage, equityCurve }
 }
 
+export interface StrategyVersionRow {
+  strategy_family: string
+  strategy_name: string
+  strategy_version: string
+  timeframe: string
+  position_side: string
+  total_trades: number
+  closed_trades: number
+  gross_pnl: string
+  net_pnl: string
+  total_fees: string
+  total_slippage_usdt: string
+  avg_slippage_usdt: string
+  win_rate: number
+  avg_win: string
+  avg_loss: string
+  profit_factor: number
+}
+
 export interface RuntimeRecommendations {
   window_days: number
   best_strategy: { strategy_name: string; net_pnl: number } | null
@@ -201,6 +221,12 @@ export interface RuntimeRecommendations {
   worst_timeframe: { timeframe: string; net_pnl: number } | null
   side_performance: { position_side: string; net_pnl: number }[]
   recommendations: string[]
+}
+
+export async function fetchByStrategyVersion(): Promise<StrategyVersionRow[]> {
+  const res = await fetch(`${API_V1}${endpoints.analytics.byStrategyVersion()}`)
+  if (!res.ok) throw new Error('Failed to fetch by-strategy-version')
+  return res.json() as Promise<StrategyVersionRow[]>
 }
 
 export async function fetchRuntimeRecommendations(days = 7): Promise<RuntimeRecommendations> {

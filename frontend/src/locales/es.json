@@ -98,6 +98,7 @@
     "capBefore": "Cap. ant.",
     "capAfter": "Cap. des.",
     "strategy": "Estrategia",
+    "version": "Versión",
     "tf": "TF",
     "ls": "L/S",
     "entry": "Entrada",
@@ -170,7 +171,13 @@
     "bestStrategy": "Mejor estrategia",
     "worstStrategy": "Peor estrategia",
     "bestTimeframe": "Mejor timeframe",
-    "worstTimeframe": "Peor timeframe"
+    "worstTimeframe": "Peor timeframe",
+    "version": "Versión",
+    "v1vsV2": "Comparativa v1 vs v2",
+    "v1vsV2Desc": "Rendimiento por estrategia, versión, timeframe y lado (slippage y PnL). Por defecto el bot usa estrategias v2.",
+    "timeframe": "Timeframe",
+    "side": "Lado",
+    "slippageTotal": "Slippage (total)"
   },
   "backtest": {
     "title": "Backtesting",
