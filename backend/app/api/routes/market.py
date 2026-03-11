@@ -28,6 +28,17 @@ async def get_current_price(symbol: str = Query("BTCUSDT")):
                 content={"detail": "Límite de solicitudes. Reintenta en 1–2 min.", "retry_after": RETRY_AFTER_SECONDS},
                 headers={"Retry-After": str(RETRY_AFTER_SECONDS)},
             )
+        if e.response.status_code in (418, 451):
+            logger.warning("market/price Binance %s: %s", e.response.status_code, e.request.url)
+            return JSONResponse(
+                status_code=502,
+                content={
+                    "detail": "Binance no disponible desde esta región ({}). Prueba región EU West (Amsterdam).".format(
+                        e.response.status_code
+                    ),
+                    "code": e.response.status_code,
+                },
+            )
         logger.exception("market/price failed: %s", e)
         return JSONResponse(
             status_code=502,
@@ -76,6 +87,17 @@ async def get_klines(
                 status_code=503,
                 content={"detail": "Límite de solicitudes. Reintenta en 1–2 min.", "retry_after": RETRY_AFTER_SECONDS},
                 headers={"Retry-After": str(RETRY_AFTER_SECONDS)},
+            )
+        if e.response.status_code in (418, 451):
+            logger.warning("market/klines Binance %s: %s", e.response.status_code, e.request.url)
+            return JSONResponse(
+                status_code=502,
+                content={
+                    "detail": "Binance no permite velas desde esta región ({}). Cambia la región del backend a EU West (Amsterdam) o revisa la documentación.".format(
+                        e.response.status_code
+                    ),
+                    "code": e.response.status_code,
+                },
             )
         logger.exception("market/klines failed: %s", e)
         return JSONResponse(
