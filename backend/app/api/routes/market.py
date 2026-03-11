@@ -15,11 +15,11 @@ RETRY_AFTER_SECONDS = 90
 
 @router.get("/price")
 async def get_current_price(symbol: str = Query("BTCUSDT")):
-    """Get current mark price for symbol."""
+    """Get current mark price for symbol. Incluye 'source' (binance, bybit, coingecko)."""
     try:
         svc = MarketDataService()
-        price = await svc.get_current_price(symbol=symbol)
-        return {"symbol": symbol, "price": str(price)}
+        price, source = await svc.get_current_price(symbol=symbol)
+        return {"symbol": symbol, "price": str(price), "source": source}
     except httpx.HTTPStatusError as e:
         if e.response.status_code == 429:
             logger.warning("market/price rate limit (429): %s", e)
@@ -62,12 +62,13 @@ async def get_klines(
     """Get klines for chart. Por defecto usa Binance o CoinGecko según configuración; force_binance=1 intenta Binance primero."""
     try:
         svc = MarketDataService()
-        klines = await svc.get_klines(
+        klines, source = await svc.get_klines(
             symbol=symbol, interval=interval, limit=limit, force_binance=force_binance
         )
         return {
             "symbol": symbol,
             "interval": interval,
+            "source": source,
             "candles": [
                 {
                     "time": int(k["open_time"].timestamp()),

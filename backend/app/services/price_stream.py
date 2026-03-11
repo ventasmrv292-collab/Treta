@@ -62,13 +62,13 @@ async def _run_poll_broadcast() -> None:
     """Cuando Binance no está disponible, consulta precio cada pocos segundos y emite por WS."""
     svc = MarketDataService()
     try:
-        price = await svc.get_current_price("BTCUSDT")
+        price, _ = await svc.get_current_price("BTCUSDT")
         await broadcast(str(price))
     except Exception:
         pass
     while True:
         try:
-            price = await svc.get_current_price("BTCUSDT")
+            price, _ = await svc.get_current_price("BTCUSDT")
             await broadcast(str(price))
         except Exception as e:
             logger.debug("price_stream poll: %s", e)

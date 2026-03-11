@@ -252,10 +252,11 @@ class MarketDataService:
         start_time: int | None = None,
         end_time: int | None = None,
         force_binance: bool = False,
-    ) -> list[dict[str, Any]]:
-        """Get historical klines. Por defecto Binance primero luego Bybit; con BYBIT_FIRST=1: Bybit primero luego Binance."""
+    ) -> tuple[list[dict[str, Any]], str]:
+        """Get historical klines. Returns (candles, source). source is 'binance', 'bybit' or 'coingecko'."""
         if self._use_coingecko and not force_binance:
-            return await _klines_from_coingecko(symbol, limit)
+            data = await _klines_from_coingecko(symbol, limit)
+            return (data, "coingecko")
         binance_only = getattr(settings, "binance_only", False)
         bybit_first = getattr(settings, "bybit_first", False)
 
@@ -281,12 +282,13 @@ class MarketDataService:
             try:
                 klines = await _klines_from_bybit(symbol=symbol, interval=interval, limit=limit)
                 logger.info("Bybit klines OK (primero): %d velas %s %s", len(klines), symbol, interval)
-                return klines
+                return (klines, "bybit")
             except Exception as e:
                 first_err = e
                 logger.warning("Bybit klines falló (%s), intentando Binance", e)
         try:
-            return await _try_binance()
+            data = await _try_binance()
+            return (data, "binance")
         except Exception as e:
             if not bybit_first:
                 first_err = e
@@ -296,20 +298,22 @@ class MarketDataService:
                 try:
                     klines = await _klines_from_bybit(symbol=symbol, interval=interval, limit=limit)
                     logger.info("Bybit klines OK: %d velas para %s %s", len(klines), symbol, interval)
-                    return klines
+                    return (klines, "bybit")
                 except Exception as bybit_err:
                     logger.warning("Bybit klines falló: %s", bybit_err)
             if not force_binance and not binance_only and first_err:
                 try:
-                    return await _klines_from_coingecko(symbol, limit)
+                    data = await _klines_from_coingecko(symbol, limit)
+                    return (data, "coingecko")
                 except Exception:
                     pass
             raise first_err or e
 
-    async def get_current_price(self, symbol: str = "BTCUSDT") -> Decimal:
-        """Get latest price. Por defecto Binance primero luego Bybit; con BYBIT_FIRST=1: Bybit primero luego Binance."""
+    async def get_current_price(self, symbol: str = "BTCUSDT") -> tuple[Decimal, str]:
+        """Get latest price. Returns (price, source). source is 'binance', 'bybit' or 'coingecko'."""
         if self._use_coingecko:
-            return await _price_from_coingecko(symbol)
+            price = await _price_from_coingecko(symbol)
+            return (price, "coingecko")
         binance_only = getattr(settings, "binance_only", False)
         bybit_first = getattr(settings, "bybit_first", False)
 
@@ -328,12 +332,13 @@ class MarketDataService:
             try:
                 price = await _price_from_bybit(symbol)
                 logger.info("Bybit price OK (primero): %s %s", symbol, price)
-                return price
+                return (price, "bybit")
             except Exception as e:
                 first_err = e
                 logger.warning("Bybit price falló (%s), intentando Binance", e)
         try:
-            return await _try_binance_price()
+            price = await _try_binance_price()
+            return (price, "binance")
         except Exception as e:
             if not bybit_first:
                 first_err = e
@@ -343,12 +348,13 @@ class MarketDataService:
                 try:
                     price = await _price_from_bybit(symbol)
                     logger.info("Bybit price OK: %s %s", symbol, price)
-                    return price
+                    return (price, "bybit")
                 except Exception as bybit_err:
                     logger.warning("Bybit price falló: %s", bybit_err)
             if not binance_only and first_err:
                 try:
-                    return await _price_from_coingecko(symbol)
+                    price = await _price_from_coingecko(symbol)
+                    return (price, "coingecko")
                 except Exception:
                     pass
             raise first_err or e

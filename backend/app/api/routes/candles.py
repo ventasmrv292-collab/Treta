@@ -65,7 +65,7 @@ async def get_candles(
     svc = MarketDataService()
     start_ts = int(from_time.timestamp() * 1000) if from_time else None
     end_ts = int(to_time.timestamp() * 1000) if to_time else None
-    klines = await svc.get_klines(symbol=symbol, interval=interval, limit=limit, start_time=start_ts, end_time=end_ts)
+    klines, _ = await svc.get_klines(symbol=symbol, interval=interval, limit=limit, start_time=start_ts, end_time=end_ts)
 
     # Map to response format (no DB persist by default to keep endpoint simple)
     items = [

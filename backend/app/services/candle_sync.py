@@ -71,7 +71,7 @@ async def sync_candles_to_db(symbol: str, interval: str, limit: int = DEFAULT_LI
     now = datetime.now(timezone.utc)
     svc = MarketDataService()
     try:
-        klines = await svc.get_klines(
+        klines, _ = await svc.get_klines(
             symbol=symbol, interval=interval, limit=limit, force_binance=True
         )
     except Exception as e:
