@@ -24,5 +24,8 @@ class StrategyRuntimeConfig(Base):
     min_rr_ratio: Mapped[Decimal | None] = mapped_column(Numeric(4, 2), nullable=True)
     max_slippage_usdt_estimated: Mapped[Decimal | None] = mapped_column(Numeric(10, 4), nullable=True)
     max_slippage_pct_of_notional: Mapped[Decimal | None] = mapped_column(Numeric(6, 4), nullable=True)
+    min_net_rr_ratio: Mapped[Decimal | None] = mapped_column(Numeric(4, 2), nullable=True)
+    max_tp_distance_pct: Mapped[Decimal | None] = mapped_column(Numeric(6, 4), nullable=True)
+    max_tp_rr_ratio: Mapped[Decimal | None] = mapped_column(Numeric(6, 2), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

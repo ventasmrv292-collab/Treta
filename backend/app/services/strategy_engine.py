@@ -35,7 +35,15 @@ from app.services.bot_log_service import (
     EVENT_RISK_LIMIT_BLOCK,
     EVENT_DUPLICATE_SIGNAL,
 )
-from app.services.trading_capital import calc_margin_used
+from app.services.trading_capital import (
+    calc_margin_used,
+    calc_exit_fee,
+    estimate_total_cost_usdt,
+    estimate_total_cost_pct,
+    compute_expected_net_rr,
+    compute_min_tp_for_net_rr,
+    check_tp_within_limits,
+)
 from app.services.pushover_service import send_trade_opened
 
 logger = logging.getLogger(__name__)
@@ -198,6 +206,88 @@ async def _execute_signal(
             await bot_log_event(session, "WARN", MODULE_STRATEGY, EVENT_SIGNAL_REJECTED, f"Signal rejected: {msg}", context={"reason": msg}, related_signal_event_id=signal_event.id)
         await session.commit()
         return None
+
+    # --- FASE 1: validación expected_net_rr y ajuste de TP (límites max_tp_*) ---
+    entry_price = Decimal(str(payload.entry_price))
+    stop_loss = Decimal(str(payload.stop_loss)) if payload.stop_loss else None
+    take_profit_base = Decimal(str(payload.take_profit)) if payload.take_profit else None
+    quantity = data_override.get("quantity") or Decimal(str(payload.quantity))
+    entry_fee = data_override.get("entry_fee") or Decimal("0")
+    entry_notional = data_override.get("entry_notional") or (quantity * entry_price)
+    fee_rate = data_override.get("fee_rate")
+    slippage_est_usdt = data_override.get("slippage_est_usdt") or Decimal("0")
+
+    if (
+        runtime_cfg is not None
+        and take_profit_base is not None
+        and stop_loss is not None
+        and fee_rate is not None
+        and runtime_cfg.min_net_rr_ratio is not None
+    ):
+        position_side = payload.position_side
+        # Exit fee estimada usando notional al TP final (más precisa que ≈ entry_fee)
+        exit_notional_at_tp = quantity * take_profit_base
+        exit_fee_est = calc_exit_fee(exit_notional_at_tp, fee_rate)
+        estimated_total_cost_usdt = estimate_total_cost_usdt(entry_fee, exit_fee_est, slippage_est_usdt)
+        expected_net_rr, _, _ = compute_expected_net_rr(
+            entry_price, take_profit_base, stop_loss, quantity,
+            position_side, entry_fee, exit_fee_est, slippage_est_usdt,
+        )
+        min_net_rr = runtime_cfg.min_net_rr_ratio
+
+        if expected_net_rr < min_net_rr:
+            tp_min = compute_min_tp_for_net_rr(
+                entry_price, stop_loss, quantity, position_side,
+                min_net_rr, entry_fee, fee_rate, slippage_est_usdt,
+            )
+            ok_tp, reason_tp = check_tp_within_limits(
+                entry_price, tp_min, stop_loss, position_side,
+                runtime_cfg.max_tp_distance_pct,
+                runtime_cfg.max_tp_rr_ratio,
+            )
+            if not ok_tp:
+                signal_event.status = "REJECTED"
+                signal_event.decision_reason = "NET_RR_REQUIRES_UNREASONABLE_TP"
+                await bot_log_event(
+                    session, "WARN", MODULE_STRATEGY, EVENT_SIGNAL_REJECTED,
+                    f"Signal rejected: {reason_tp} (expected_net_rr requires TP beyond limits)",
+                    context={"reason": reason_tp, "strategy": signal.strategy_name, "timeframe": signal.timeframe},
+                    related_signal_event_id=signal_event.id,
+                )
+                await session.commit()
+                return None
+            # Ajustar TP al mínimo que cumple min_net_rr
+            data_override["take_profit"] = tp_min
+            exit_notional_at_tp = quantity * tp_min
+            exit_fee_est = calc_exit_fee(exit_notional_at_tp, fee_rate)
+            expected_net_rr, _, _ = compute_expected_net_rr(
+                entry_price, tp_min, stop_loss, quantity,
+                position_side, entry_fee, exit_fee_est, slippage_est_usdt,
+            )
+            estimated_total_cost_usdt = estimate_total_cost_usdt(entry_fee, exit_fee_est, slippage_est_usdt)
+
+        estimated_total_cost_pct_val = estimate_total_cost_pct(estimated_total_cost_usdt, entry_notional)
+        data_override["expected_net_rr_at_open"] = expected_net_rr
+        data_override["estimated_total_cost_usdt_at_open"] = estimated_total_cost_usdt
+        data_override["estimated_total_cost_pct_at_open"] = estimated_total_cost_pct_val
+        data_override["take_profit_base_at_open"] = take_profit_base
+    elif take_profit_base is not None and stop_loss is not None and fee_rate is not None:
+        # Sin min_net_rr_ratio: solo persistir métricas ex ante si tenemos TP
+        exit_notional_at_tp = quantity * take_profit_base
+        exit_fee_est = calc_exit_fee(exit_notional_at_tp, fee_rate)
+        estimated_total_cost_usdt = estimate_total_cost_usdt(entry_fee, exit_fee_est, slippage_est_usdt)
+        expected_net_rr, _, _ = compute_expected_net_rr(
+            entry_price, take_profit_base, stop_loss, quantity,
+            payload.position_side, entry_fee, exit_fee_est, slippage_est_usdt,
+        )
+        data_override["expected_net_rr_at_open"] = expected_net_rr
+        data_override["estimated_total_cost_usdt_at_open"] = estimated_total_cost_usdt
+        data_override["estimated_total_cost_pct_at_open"] = estimate_total_cost_pct(estimated_total_cost_usdt, entry_notional)
+        data_override["take_profit_base_at_open"] = take_profit_base
+
+    # No persistir en Trade campos solo usados para cálculo (fee_rate, slippage_est_usdt)
+    data_override.pop("fee_rate", None)
+    data_override.pop("slippage_est_usdt", None)
 
     data = n8n_create_to_trade(payload, data_override)
     trade = Trade(**data)

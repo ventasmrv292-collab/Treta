@@ -303,7 +303,7 @@ async def get_dashboard_summary(
 
 @router.get("/by-strategy-version", response_model=list[StrategyVersionComparison])
 async def get_by_strategy_version(db: AsyncSession = Depends(get_db)):
-    """Comparativa v1 vs v2 por strategy_name, strategy_version, timeframe, side; incluye slippage."""
+    """Comparativa v1 vs v2 por strategy_name, strategy_version, timeframe, side; FASE 1: payoff_ratio, avg_expected_net_rr_at_open."""
     closed = and_(Trade.closed_at.isnot(None), Trade.net_pnl_usdt.isnot(None))
     q = (
         select(
@@ -320,6 +320,9 @@ async def get_by_strategy_version(db: AsyncSession = Depends(get_db)):
             func.avg(Trade.slippage_usdt).label("avg_slippage_usdt"),
             func.sum(case([(Trade.net_pnl_usdt > 0, 1)], else_=0)).label("wins"),
             func.avg(Trade.net_pnl_usdt).label("avg_pnl"),
+            func.avg(case([(Trade.net_pnl_usdt > 0, Trade.gross_pnl_usdt)], else_=None)).label("avg_gross_win"),
+            func.avg(case([(Trade.net_pnl_usdt < 0, Trade.gross_pnl_usdt)], else_=None)).label("avg_gross_loss"),
+            func.avg(Trade.expected_net_rr_at_open).label("avg_expected_net_rr_at_open"),
         )
         .where(closed)
         .group_by(Trade.strategy_family, Trade.strategy_name, Trade.strategy_version, Trade.timeframe, Trade.position_side)
@@ -337,6 +340,9 @@ async def get_by_strategy_version(db: AsyncSession = Depends(get_db)):
         total_slip = _decimal_or_zero(r[9])
         avg_slip = _decimal_or_zero(r[10])
         avg_pnl = _decimal_or_zero(r[12])
+        avg_gross_win = _decimal_or_zero(r[13]) if r[13] is not None else None
+        avg_gross_loss = _decimal_or_zero(r[14]) if r[14] is not None else None
+        avg_expected_net_rr = _decimal_or_zero(r[15]) if r[15] is not None else None
         avg_win = avg_pnl if wins else Decimal("0")
         losses_sum_q = await db.execute(
             select(func.sum(Trade.net_pnl_usdt)).where(
@@ -387,6 +393,8 @@ async def get_by_strategy_version(db: AsyncSession = Depends(get_db)):
         )
         avg_win = _decimal_or_zero(avg_win_q.scalar())
         avg_loss = _decimal_or_zero(avg_loss_q.scalar())
+        payoff_ratio = (avg_win / abs(avg_loss)) if avg_loss and avg_loss != 0 else None
+        avg_fees = (fees / total) if total else None
         out.append(
             StrategyVersionComparison(
                 strategy_family=r[0],
@@ -405,6 +413,12 @@ async def get_by_strategy_version(db: AsyncSession = Depends(get_db)):
                 avg_win=avg_win,
                 avg_loss=avg_loss,
                 profit_factor=round(pf, 4),
+                avg_gross_win=avg_gross_win,
+                avg_gross_loss=avg_gross_loss,
+                avg_fees=avg_fees,
+                expectancy=avg_pnl,
+                payoff_ratio=payoff_ratio,
+                avg_expected_net_rr_at_open=avg_expected_net_rr,
             )
         )
     return out

@@ -356,11 +356,16 @@ async def prepare_n8n_trade(session: AsyncSession, payload: N8nTradeCreate) -> d
                 )
 
     fee_config_id = await get_default_fee_config_id(session)
+    slippage_bps = float(getattr(engine.config, "slippage_bps", 5) or 5)
+    slippage_est_usdt = (entry_notional * Decimal(str(slippage_bps / 10000)) * 2).quantize(Decimal("0.01"))
+    rate_dec = engine.config.taker_rate()
     data_override = {
         "entry_notional": entry_notional,
         "margin_used_usdt": margin_used,
         "entry_fee": entry_fee,
         "quantity": qty,
+        "fee_rate": rate_dec,
+        "slippage_est_usdt": slippage_est_usdt,
     }
     if fee_config_id is not None:
         data_override["fee_config_id"] = fee_config_id
