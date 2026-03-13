@@ -1,6 +1,6 @@
 """
 Scheduler interno: ejecuta jobs en segundo plano con intervalos fijos.
-Protección contra solapamiento y estado visible vía get_scheduler_status().
+Solo timeframes 15m, 30m y 1h. Sin 1m ni 5m.
 """
 from __future__ import annotations
 
@@ -83,19 +83,19 @@ async def _loop_job(
 
 def start_scheduler() -> asyncio.Task[None]:
     """
-    Arranca el scheduler: lanza todas las tareas en segundo plano.
-    Devuelve una Task que agrupa las tareas (para cancelar en shutdown).
+    Arranca el scheduler: solo 15m, 30m y 1h (sync + strategies).
+    Sin 1m ni 5m.
     """
     global _scheduler_started_at
     _scheduler_started_at = time.time()
 
     from app.services.scheduler_jobs import (
-        run_sync_candles_1m,
-        run_sync_candles_5m,
         run_sync_candles_15m,
-        run_strategies_1m,
-        run_strategies_5m,
+        run_sync_candles_30m,
+        run_sync_candles_1h,
         run_strategies_15m,
+        run_strategies_30m,
+        run_strategies_1h,
         run_position_supervisor_cycle,
         run_refresh_analytics_cache,
     )
@@ -107,7 +107,7 @@ def start_scheduler() -> asyncio.Task[None]:
                 "INFO",
                 MODULE_SCHEDULER,
                 EVENT_SCHEDULER_STARTED,
-                "Scheduler iniciado (sync velas, estrategias, supervisor, analytics)",
+                "Scheduler iniciado (15m, 30m, 1h; supervisor; analytics)",
                 context={"started_at": _scheduler_started_at},
             )
             await session.commit()
@@ -115,22 +115,16 @@ def start_scheduler() -> asyncio.Task[None]:
     async def _bootstrap():
         await _log_start()
 
-    # Intervalos
-    # Supervisor cada 15 s
-    # Sync 1m cada 60 s, strategies 1m cada 60 s (con pequeño delay tras sync)
-    # Sync 5m cada 300 s, strategies 5m cada 300 s
-    # Sync 15m cada 900 s, strategies 15m cada 900 s
-    # Analytics cache cada 300 s (opcional)
-
+    # Solo 15m, 30m, 1h. Supervisor cada 15 s. Analytics cache cada 300 s.
     tasks: list[asyncio.Task[None]] = []
 
     tasks.append(asyncio.create_task(_loop_job("position_supervisor", 15.0, run_position_supervisor_cycle)))
-    tasks.append(asyncio.create_task(_loop_job("sync_candles_1m", 60.0, run_sync_candles_1m)))
-    tasks.append(asyncio.create_task(_loop_job("run_strategies_1m", 60.0, run_strategies_1m, stagger=10.0)))
-    tasks.append(asyncio.create_task(_loop_job("sync_candles_5m", 300.0, run_sync_candles_5m, stagger=5.0)))
-    tasks.append(asyncio.create_task(_loop_job("run_strategies_5m", 300.0, run_strategies_5m, stagger=15.0)))
     tasks.append(asyncio.create_task(_loop_job("sync_candles_15m", 900.0, run_sync_candles_15m, stagger=20.0)))
     tasks.append(asyncio.create_task(_loop_job("run_strategies_15m", 900.0, run_strategies_15m, stagger=30.0)))
+    tasks.append(asyncio.create_task(_loop_job("sync_candles_30m", 1800.0, run_sync_candles_30m, stagger=40.0)))
+    tasks.append(asyncio.create_task(_loop_job("run_strategies_30m", 1800.0, run_strategies_30m, stagger=50.0)))
+    tasks.append(asyncio.create_task(_loop_job("sync_candles_1h", 3600.0, run_sync_candles_1h, stagger=60.0)))
+    tasks.append(asyncio.create_task(_loop_job("run_strategies_1h", 3600.0, run_strategies_1h, stagger=70.0)))
     tasks.append(asyncio.create_task(_loop_job("refresh_analytics_cache", 300.0, run_refresh_analytics_cache, stagger=60.0)))
 
     async def _run_all():

@@ -31,7 +31,7 @@ def _default_quality_response(symbol: str | None, interval: str | None) -> dict:
 @router.get("/quality")
 async def get_candles_quality(
     symbol: str | None = Query(None, description="Filtrar por símbolo (ej. BTCUSDT)"),
-    interval: str | None = Query(None, description="Filtrar por intervalo (1m, 5m, 15m)"),
+    interval: str | None = Query(None, description="Filtrar por intervalo (15m, 30m, 1h)"),
     db: AsyncSession = Depends(get_db),
 ):
     """

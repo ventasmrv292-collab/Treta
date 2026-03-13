@@ -390,7 +390,9 @@ async def run_strategies_for_timeframe(interval: str) -> list[Trade]:
                 continue
             try:
                 cfg = await _get_runtime_config(session, strat, SYMBOL, interval)
-                if cfg is not None and not cfg.active:
+                if cfg is None:
+                    continue
+                if not cfg.active:
                     continue
                 params = {}
                 if strat.default_params_json:
