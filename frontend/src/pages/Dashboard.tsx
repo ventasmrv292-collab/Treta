@@ -11,7 +11,7 @@ import type { StrategyOverlayId } from '../utils/strategyIndicators'
 import { format } from 'date-fns'
 import { TrendingUp, Activity, DollarSign, Percent, Wallet, History, ArrowRight, Bot, FileText } from 'lucide-react'
 
-const TIMEFRAMES = ['1m', '5m', '15m', '1h'] as const
+const TIMEFRAMES = ['15m', '30m', '1h'] as const
 
 /** Intervalo de refresco del precio (ms). */
 const PRICE_REFRESH_MS = 10_000
@@ -441,16 +441,26 @@ export function Dashboard() {
               {schedulerStatus.started_at != null && (
                 <p className="text-[var(--text-muted)]">{t('dashboard.startedAt')}: {format(new Date(schedulerStatus.started_at * 1000), 'HH:mm:ss')}</p>
               )}
-              {schedulerStatus.jobs?.sync_candles_1m?.last_run_at != null && (
-                <p className="text-[var(--text-muted)]">{t('dashboard.lastSync1m')}: {format(new Date(schedulerStatus.jobs.sync_candles_1m.last_run_at * 1000), 'HH:mm:ss')}</p>
-              )}
-              {schedulerStatus.jobs?.sync_candles_1m?.last_error != null && (
-                <p className="text-amber-400 text-xs mt-1" title={schedulerStatus.jobs.sync_candles_1m.last_error}>
-                  {t('dashboard.syncCandlesError')}: {schedulerStatus.jobs.sync_candles_1m.last_error.slice(0, 60)}{schedulerStatus.jobs.sync_candles_1m.last_error.length > 60 ? '…' : ''}
+              {(['15m', '30m', '1h'] as const).map((tf) => {
+                const jobKeySync = `sync_candles_${tf}` as keyof typeof schedulerStatus.jobs
+                const jobKeyStrats = `run_strategies_${tf}` as keyof typeof schedulerStatus.jobs
+                const syncJob = schedulerStatus.jobs?.[jobKeySync] as { last_run_at?: number; last_error?: string } | undefined
+                const stratJob = schedulerStatus.jobs?.[jobKeyStrats] as { last_run_at?: number } | undefined
+                return (
+                  <div key={tf} className="flex flex-wrap gap-x-3 gap-y-0.5 text-sm">
+                    {syncJob?.last_run_at != null && (
+                      <span className="text-[var(--text-muted)]">{t('dashboard.lastSync')} {tf}: {format(new Date(syncJob.last_run_at * 1000), 'HH:mm:ss')}</span>
+                    )}
+                    {stratJob?.last_run_at != null && (
+                      <span className="text-[var(--text-muted)]">{t('dashboard.lastStrategy')} {tf}: {format(new Date(stratJob.last_run_at * 1000), 'HH:mm:ss')}</span>
+                    )}
+                  </div>
+                )
+              })}
+              {schedulerStatus.jobs?.sync_candles_15m?.last_error != null && (
+                <p className="text-amber-400 text-xs mt-1" title={schedulerStatus.jobs.sync_candles_15m.last_error}>
+                  {t('dashboard.syncCandlesError')}: {schedulerStatus.jobs.sync_candles_15m.last_error.slice(0, 60)}{schedulerStatus.jobs.sync_candles_15m.last_error.length > 60 ? '…' : ''}
                 </p>
-              )}
-              {schedulerStatus.jobs?.run_strategies_1m?.last_run_at != null && (
-                <p className="text-[var(--text-muted)]">{t('dashboard.lastStrategy1m')}: {format(new Date(schedulerStatus.jobs.run_strategies_1m.last_run_at * 1000), 'HH:mm:ss')}</p>
               )}
             </div>
           ) : (

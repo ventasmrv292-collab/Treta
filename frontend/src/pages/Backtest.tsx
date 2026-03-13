@@ -117,9 +117,8 @@ export function Backtest() {
               onChange={(e) => setForm((f) => ({ ...f, interval: e.target.value }))}
               className="w-full rounded-lg border border-white/10 bg-[var(--surface)] px-3 py-2 text-sm"
             >
-              <option value="1m">1m</option>
-              <option value="5m">5m</option>
               <option value="15m">15m</option>
+              <option value="30m">30m</option>
               <option value="1h">1h</option>
             </select>
           </label>

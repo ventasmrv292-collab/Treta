@@ -5,7 +5,7 @@ import { useToast } from '../components/Toaster'
 import type { Strategy, PaperAccount, RiskProfile, PositionSizePreview } from '../types'
 import type { ManualTradeCreate } from '../types'
 
-const TIMEFRAMES = ['1m', '5m', '15m', '1h']
+const TIMEFRAMES = ['15m', '30m', '1h']
 const LEVERAGE_OPTIONS = [10, 20]
 const POSITION_SIDES = ['LONG', 'SHORT'] as const
 const ORDER_TYPES = ['MARKET', 'LIMIT']
