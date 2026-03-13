@@ -68,6 +68,7 @@ export function Dashboard() {
     let cancelled = false
     setLoading(true)
     setCandlesError(null)
+    setCandles([]) // Vaciar velas al cambiar timeframe para no mostrar datos del intervalo anterior
     Promise.all([
       fetchKlines('BTCUSDT', interval, 300),
       fetchPrice('BTCUSDT'),
@@ -121,6 +122,7 @@ export function Dashboard() {
         if (!cancelled) {
           setStreamStatus('idle')
           setCandlesError(err?.message ?? 'No se pudieron cargar las velas.')
+          setCandles([]) // No mostrar velas de otro intervalo cuando falla la petición
         }
       })
       .finally(() => {
