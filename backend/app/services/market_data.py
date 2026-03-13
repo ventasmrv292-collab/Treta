@@ -228,23 +228,21 @@ async def _klines_from_coingecko(symbol: str, limit: int = 300) -> list[dict[str
 
 
 def _is_render_or_prefer_coingecko() -> bool:
-    """En Render (PORT inyectado) Binance devuelve 451; usar CoinGecko directamente.
-    BINANCE_ONLY=1: nunca CoinGecko, solo Binance (si 451/418, falla).
-    USE_BINANCE_FOR_MARKET=1: intentar Binance primero aunque PORT esté definido."""
+    """Solo para el stream de precio en tiempo real: si no se puede usar Binance WS (ej. 451), usar poll.
+    Para klines/precio REST ya no se usa: el orden es Bybit (si bybit_first) → Binance; CoinGecko solo si allow_coingecko_fallback."""
     import os
-    if getattr(settings, "binance_only", False):
-        return False  # BINANCE_ONLY: solo Binance, sin fallback
+    if getattr(settings, "binance_only", False) or getattr(settings, "bybit_first", False):
+        return False
     if os.environ.get("USE_BINANCE_FOR_MARKET", "").lower() in ("1", "true", "yes"):
         return False
     return os.environ.get("PORT") is not None or os.environ.get("USE_COINGECKO_FOR_MARKET", "").lower() in ("1", "true", "yes")
 
 
 class MarketDataService:
-    """Fetch OHLCV: Binance por defecto; en Render o con USE_COINGECKO_FOR_MARKET usa CoinGecko (Binance 451)."""
+    """Fetch OHLCV: Bybit primero (si bybit_first) o Binance primero; el otro como respaldo. CoinGecko solo como último recurso opcional."""
 
     def __init__(self) -> None:
         self.base_url = settings.binance_futures_rest_url.rstrip("/")
-        self._use_coingecko = _is_render_or_prefer_coingecko()
 
     async def get_klines(
         self,
@@ -255,12 +253,10 @@ class MarketDataService:
         end_time: int | None = None,
         force_binance: bool = False,
     ) -> tuple[list[dict[str, Any]], str]:
-        """Get historical klines. Returns (candles, source). source is 'binance', 'bybit' or 'coingecko'."""
-        if self._use_coingecko and not force_binance:
-            data = await _klines_from_coingecko(symbol, limit)
-            return (data, "coingecko")
+        """Get historical klines. Returns (candles, source). Orden: Bybit (si bybit_first) → Binance; CoinGecko solo si allow_coingecko_fallback."""
         binance_only = getattr(settings, "binance_only", False)
         bybit_first = getattr(settings, "bybit_first", False)
+        allow_coingecko = getattr(settings, "allow_coingecko_fallback", False)
 
         async def _try_binance() -> list[dict[str, Any]]:
             interval_b = INTERVAL_MAP.get(interval, interval)
@@ -303,21 +299,20 @@ class MarketDataService:
                     return (klines, "bybit")
                 except Exception as bybit_err:
                     logger.warning("Bybit klines falló: %s", bybit_err)
-            if not force_binance and not binance_only and first_err:
+            if allow_coingecko and not force_binance and not binance_only and first_err:
                 try:
                     data = await _klines_from_coingecko(symbol, limit)
+                    logger.info("CoinGecko klines OK (último recurso) para %s", symbol)
                     return (data, "coingecko")
                 except Exception:
                     pass
             raise first_err or e
 
     async def get_current_price(self, symbol: str = "BTCUSDT") -> tuple[Decimal, str]:
-        """Get latest price. Returns (price, source). source is 'binance', 'bybit' or 'coingecko'."""
-        if self._use_coingecko:
-            price = await _price_from_coingecko(symbol)
-            return (price, "coingecko")
+        """Get latest price. Returns (price, source). Orden: Bybit (si bybit_first) → Binance; CoinGecko solo si allow_coingecko_fallback."""
         binance_only = getattr(settings, "binance_only", False)
         bybit_first = getattr(settings, "bybit_first", False)
+        allow_coingecko = getattr(settings, "allow_coingecko_fallback", False)
 
         async def _try_binance_price() -> Decimal:
             async with httpx.AsyncClient(timeout=10.0) as client:
@@ -353,9 +348,10 @@ class MarketDataService:
                     return (price, "bybit")
                 except Exception as bybit_err:
                     logger.warning("Bybit price falló: %s", bybit_err)
-            if not binance_only and first_err:
+            if allow_coingecko and not binance_only and first_err:
                 try:
                     price = await _price_from_coingecko(symbol)
+                    logger.info("CoinGecko price OK (último recurso) para %s", symbol)
                     return (price, "coingecko")
                 except Exception:
                     pass
