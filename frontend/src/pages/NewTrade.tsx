@@ -45,7 +45,9 @@ export function NewTrade() {
     fetchPaperAccounts()
       .then((accs) => {
         setPaperAccounts(accs)
-        if (accs.length > 0) setSelectedAccountId(accs[0].id)
+        const activeAccount = accs.find((a) => a.status === 'ACTIVE')
+        const accountId = activeAccount?.id ?? (accs.length > 0 ? accs[0].id : null)
+        if (accountId != null) setSelectedAccountId(accountId)
       })
       .catch(() => {})
     fetchRiskProfiles().then(setRiskProfiles).catch(() => {})

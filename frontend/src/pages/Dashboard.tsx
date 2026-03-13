@@ -80,7 +80,8 @@ export function Dashboard() {
         setPrice(priceRes.price)
         setMarketDataSource(klinesRes.source ?? priceRes.source ?? null)
         setPaperAccounts(accounts)
-        const accountId = accounts.length > 0 ? accounts[0].id : null
+        const activeAccount = accounts.find((a) => a.status === 'ACTIVE')
+        const accountId = activeAccount?.id ?? (accounts.length > 0 ? accounts[0].id : null)
         setSelectedAccountId(accountId)
         if (accountId != null) {
           return fetchDashboardSummary(accountId).then((summary) => {
