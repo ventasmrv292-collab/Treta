@@ -350,10 +350,13 @@ async def prepare_n8n_trade(session: AsyncSession, payload: N8nTradeCreate) -> d
                 raise ValueError(
                     f"SLIPPAGE_ESTIMATE_EXCEEDED: estimated {slippage_est_usdt} USDT > max {rtc.max_slippage_usdt_estimated}"
                 )
-            if rtc.max_slippage_pct_of_notional is not None and slippage_pct > rtc.max_slippage_pct_of_notional:
-                raise ValueError(
-                    f"SLIPPAGE_PCT_EXCEEDED: estimated {round(float(slippage_pct), 4)}% > max {rtc.max_slippage_pct_of_notional}%"
-                )
+            if rtc.max_slippage_pct_of_notional is not None:
+                max_pct = Decimal(str(rtc.max_slippage_pct_of_notional))
+                # Tolerancia 0.0001% para no rechazar por redondeo (ej. 0.1% estimado vs max 0.10%)
+                if slippage_pct > max_pct + Decimal("0.0001"):
+                    raise ValueError(
+                        f"SLIPPAGE_PCT_EXCEEDED: estimated {round(float(slippage_pct), 4)}% > max {rtc.max_slippage_pct_of_notional}%"
+                    )
 
     fee_config_id = await get_default_fee_config_id(session)
     slippage_bps = float(getattr(engine.config, "slippage_bps", 5) or 5)
