@@ -115,6 +115,12 @@ def _signal_to_n8n_payload(
     )
 
 
+# Tolerancia para comparaciones float (evitar rechazos por redondeo: rr=1.2 vs min=1.20)
+_RR_TOLERANCE = 1e-6
+# Tolerancia Decimal para expected_net_rr vs min_net_rr_ratio (evitar rechazos por redondeo)
+_NET_RR_TOLERANCE = Decimal("0.0001")
+
+
 def _validate_signal_limits(
     signal: StrategySignal,
     cfg: StrategyRuntimeConfig,
@@ -129,12 +135,13 @@ def _validate_signal_limits(
         return True, ""
     risk_dist = abs(entry - stop)
     stop_pct = (risk_dist / entry) * 100
-    if cfg.min_stop_distance_pct is not None and stop_pct < float(cfg.min_stop_distance_pct):
+    if cfg.min_stop_distance_pct is not None and stop_pct < float(cfg.min_stop_distance_pct) - _RR_TOLERANCE:
         return False, f"STOP_TOO_CLOSE: stop_dist_pct={round(stop_pct, 4)}% < min={cfg.min_stop_distance_pct}"
     if cfg.min_rr_ratio is not None and tp is not None and risk_dist > 0:
         reward_dist = abs(tp - entry)
         rr = reward_dist / risk_dist
-        if rr < float(cfg.min_rr_ratio):
+        min_rr = float(cfg.min_rr_ratio)
+        if rr < min_rr - _RR_TOLERANCE:
             return False, f"RR_BELOW_MIN: rr={round(rr, 2)} < min_rr_ratio={cfg.min_rr_ratio}"
     return True, ""
 
@@ -235,7 +242,7 @@ async def _execute_signal(
         )
         min_net_rr = runtime_cfg.min_net_rr_ratio
 
-        if expected_net_rr < min_net_rr:
+        if expected_net_rr < min_net_rr - _NET_RR_TOLERANCE:
             tp_min = compute_min_tp_for_net_rr(
                 entry_price, stop_loss, quantity, position_side,
                 min_net_rr, entry_fee, fee_rate, slippage_est_usdt,
