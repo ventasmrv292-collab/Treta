@@ -8,7 +8,7 @@ import websockets
 from starlette.websockets import WebSocket
 
 from app.config import settings
-from app.services.market_data import MarketDataService, _is_render_or_prefer_coingecko
+from app.services.market_data import MarketDataService
 
 logger = logging.getLogger(__name__)
 
@@ -76,14 +76,9 @@ async def _run_poll_broadcast() -> None:
 
 
 async def run_price_stream() -> None:
-    """Tarea en segundo plano: emite precio en tiempo real a todos los clientes WS."""
-    use_coingecko = _is_render_or_prefer_coingecko()
-    if use_coingecko:
-        logger.info("Precio en tiempo real: modo poll cada %.1fs (CoinGecko)", _POLL_INTERVAL)
-        await _run_poll_broadcast()
-    else:
-        logger.info("Precio en tiempo real: stream Binance mark price")
-        await _run_binance_ws()
+    """Tarea en segundo plano: emite precio en tiempo real (Binance USDM). Sin fallback a spot/CoinGecko."""
+    logger.info("Precio en tiempo real: stream Binance USDM mark price")
+    await _run_binance_ws()
 
 
 def get_last_price() -> str | None:
