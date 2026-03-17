@@ -572,6 +572,7 @@ async def _evaluate_pending_orders(
                 PendingOrder.status == "PENDING",
             )
         )
+    )
     pendings = list(result.scalars().all())
     now = datetime.now(timezone.utc)
     opened: list[Trade] = []
