@@ -1,6 +1,7 @@
-import { useEffect, useRef, useCallback } from 'react'
+import { useEffect, useRef, useCallback, useState } from 'react'
 import { createChart, IChartApi, ISeriesApi, CandlestickData } from 'lightweight-charts'
 import type { CandleData } from '../types'
+import { getIndicatorsForStrategy, type StrategyOverlayId } from '../utils/strategyIndicators'
 
 interface CandlestickChartProps {
   data: CandleData[]
@@ -9,12 +10,25 @@ interface CandlestickChartProps {
   onCrosshairMove?: (price: number | null) => void
   /** Precio en vivo para actualizar la última vela en tiempo real */
   livePrice?: number | null
+  /** Estrategia cuyos indicadores se superponen en el gráfico (Breakout, VWAP, EMA) */
+  strategyOverlay?: StrategyOverlayId | null
+  /** Nombre del indicador (para tooltip al pasar el ratón por las líneas) */
+  indicatorName?: string
+  /** Descripción breve del indicador (para tooltip) */
+  indicatorDescription?: string
 }
 
-export function CandlestickChart({ data, height = 400, interval = '15m', onCrosshairMove, livePrice }: CandlestickChartProps) {
+export function CandlestickChart({ data, height = 400, interval = '15m', onCrosshairMove, livePrice, strategyOverlay, indicatorName, indicatorDescription }: CandlestickChartProps) {
   const chartRef = useRef<HTMLDivElement>(null)
   const chartInstance = useRef<IChartApi | null>(null)
   const seriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null)
+  const indicatorSeriesRef = useRef<ISeriesApi<'Line'>[]>([])
+  const indicatorNameRef = useRef<string | undefined>(indicatorName)
+  const indicatorDescRef = useRef<string | undefined>(indicatorDescription)
+  indicatorNameRef.current = indicatorName
+  indicatorDescRef.current = indicatorDescription
+  /** Posición del tooltip cuando el ratón está sobre una línea de indicador (coords relativas al contenedor). */
+  const [indicatorTooltip, setIndicatorTooltip] = useState<{ x: number; y: number } | null>(null)
 
   const isDark = !document.documentElement.classList.contains('light')
 
@@ -59,12 +73,20 @@ export function CandlestickChart({ data, height = 400, interval = '15m', onCross
     chartInstance.current = chart
     seriesRef.current = candlestickSeries
 
-    if (onCrosshairMove) {
-      chart.subscribeCrosshairMove((param) => {
+    chart.subscribeCrosshairMove((param) => {
+      if (onCrosshairMove) {
         const price = param.seriesData.get(candlestickSeries) as { close?: number } | undefined
         onCrosshairMove(price?.close ?? null)
-      })
-    }
+      }
+      const indicators = indicatorSeriesRef.current
+      const overIndicator = indicators.length > 0 && indicators.some((s) => param.seriesData.get(s) != null)
+      const point = param.point as { x: number; y: number } | undefined
+      if (overIndicator && point != null && indicatorNameRef.current && indicatorDescRef.current) {
+        setIndicatorTooltip((prev) => (prev && prev.x === point.x && prev.y === point.y ? prev : { x: point.x, y: point.y }))
+      } else {
+        setIndicatorTooltip(null)
+      }
+    })
     return () => {
       chart.remove()
       chartInstance.current = null
@@ -113,5 +135,58 @@ export function CandlestickChart({ data, height = 400, interval = '15m', onCross
     })
   }, [livePrice, data])
 
-  return <div ref={chartRef} style={{ height: `${height}px`, width: '100%' }} />
+  // Indicadores por estrategia: añadir o quitar series de líneas + tooltip al pasar el ratón
+  useEffect(() => {
+    const chart = chartInstance.current
+    if (!chart || !data.length) return
+
+    indicatorSeriesRef.current.forEach((s) => {
+      try {
+        chart.removeSeries(s)
+      } catch (_) {}
+    })
+    indicatorSeriesRef.current = []
+
+    if (strategyOverlay) {
+      const seriesList = getIndicatorsForStrategy(strategyOverlay, data)
+      const timeData = (arr: { time: number; value: number }[]) =>
+        arr.map((d) => ({ time: d.time as unknown as CandlestickData['time'], value: d.value }))
+
+      seriesList.forEach((ind) => {
+        const options: { color: string; priceScaleId?: string } = { color: ind.color }
+        if (ind.isVolume) {
+          options.priceScaleId = 'volume'
+        }
+        const lineSeries = chart.addLineSeries(options)
+        if (ind.isVolume) {
+          try {
+            lineSeries.priceScale().applyOptions({ scaleMargins: { top: 0.75, bottom: 0 } })
+          } catch (_) {}
+        }
+        lineSeries.setData(timeData(ind.data))
+        indicatorSeriesRef.current.push(lineSeries)
+      })
+      chart.timeScale().fitContent()
+    } else {
+      setIndicatorTooltip(null)
+    }
+  }, [data, strategyOverlay])
+
+  return (
+    <div className="relative" style={{ height: `${height}px`, width: '100%' }}>
+      <div ref={chartRef} className="absolute inset-0" style={{ height: `${height}px`, width: '100%' }} />
+      {indicatorTooltip != null && indicatorName && indicatorDescription && (
+        <div
+          className="pointer-events-none absolute z-10 max-w-[240px] rounded-lg border border-white/20 bg-slate-900/95 px-2.5 py-2 text-left text-xs shadow-lg backdrop-blur"
+          style={{
+            left: indicatorTooltip.x + 12,
+            top: indicatorTooltip.y - 8,
+          }}
+        >
+          <p className="font-semibold text-[var(--accent)]">{indicatorName}</p>
+          <p className="mt-0.5 text-[var(--text-muted)]">{indicatorDescription}</p>
+        </div>
+      )}
+    </div>
+  )
 }

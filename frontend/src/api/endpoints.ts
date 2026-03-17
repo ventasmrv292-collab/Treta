@@ -42,8 +42,8 @@ const qs = (params: Record<string, string | number | boolean | undefined>) => {
 export const endpoints = {
   market: {
     price: (symbol = 'BTCUSDT') => `/market/price${qs({ symbol })}`,
-    klines: (symbol = 'BTCUSDT', interval = '15m', limit = 300) =>
-      `/market/klines${qs({ symbol, interval, limit })}`,
+    klines: (symbol = 'BTCUSDT', interval = '15m', limit = 300, forceBinance = false) =>
+      `/market/klines${qs({ symbol, interval, limit, force_binance: forceBinance })}`,
   },
   trades: {
     list: (params: {
@@ -78,8 +78,10 @@ export const endpoints = {
     dashboardSummary: (accountId?: number) =>
       accountId != null ? `/analytics/dashboard-summary${qs({ account_id: accountId })}` : '/analytics/dashboard-summary',
     byStrategy: () => '/analytics/by-strategy',
+    byStrategyVersion: () => '/analytics/by-strategy-version',
     byLeverage: () => '/analytics/by-leverage',
     equityCurve: (period?: string) => `/analytics/equity-curve${qs({ period: period || 'all' })}`,
+    runtimeRecommendations: (days?: number) => `/analytics/runtime-recommendations${qs({ days: days ?? 7 })}`,
   },
   backtest: {
     list: () => '/backtest',
@@ -102,17 +104,28 @@ export const endpoints = {
   supervisor: {
     status: () => '/supervisor/status',
   },
+  scheduler: {
+    status: () => '/scheduler/status',
+  },
+  dashboard: {
+    summary: (accountId?: number) =>
+      accountId != null ? `/dashboard/summary${qs({ account_id: accountId })}` : '/dashboard/summary',
+  },
 }
 
 export async function fetchPrice(symbol: string) {
   const res = await fetch(`${API_V1}${endpoints.market.price(symbol)}`)
   if (!res.ok) throw new Error('Failed to fetch price')
-  return res.json() as Promise<{ symbol: string; price: string }>
+  return res.json() as Promise<{ symbol: string; price: string; source?: string }>
 }
 
-export async function fetchKlines(symbol: string, interval: string, limit = 300) {
-  const res = await fetch(`${API_V1}${endpoints.market.klines(symbol, interval, limit)}`)
-  if (!res.ok) throw new Error('Failed to fetch klines')
+export async function fetchKlines(symbol: string, interval: string, limit = 300, forceBinance = false) {
+  const res = await fetch(`${API_V1}${endpoints.market.klines(symbol, interval, limit, forceBinance)}`)
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    const msg = (err as { detail?: string })?.detail ?? res.statusText
+    throw new Error(msg || 'Failed to fetch klines')
+  }
   return res.json() as Promise<KlinesResponse>
 }
 
@@ -179,6 +192,47 @@ export async function fetchAnalytics(): Promise<{
     fetch(`${API_V1}${endpoints.analytics.equityCurve()}`).then((r) => r.json()),
   ])
   return { byStrategy, byLeverage, equityCurve }
+}
+
+export interface StrategyVersionRow {
+  strategy_family: string
+  strategy_name: string
+  strategy_version: string
+  timeframe: string
+  position_side: string
+  total_trades: number
+  closed_trades: number
+  gross_pnl: string
+  net_pnl: string
+  total_fees: string
+  total_slippage_usdt: string
+  avg_slippage_usdt: string
+  win_rate: number
+  avg_win: string
+  avg_loss: string
+  profit_factor: number
+}
+
+export interface RuntimeRecommendations {
+  window_days: number
+  best_strategy: { strategy_name: string; net_pnl: number } | null
+  worst_strategy: { strategy_name: string; net_pnl: number } | null
+  best_timeframe: { timeframe: string; net_pnl: number } | null
+  worst_timeframe: { timeframe: string; net_pnl: number } | null
+  side_performance: { position_side: string; net_pnl: number }[]
+  recommendations: string[]
+}
+
+export async function fetchByStrategyVersion(): Promise<StrategyVersionRow[]> {
+  const res = await fetch(`${API_V1}${endpoints.analytics.byStrategyVersion()}`)
+  if (!res.ok) throw new Error('Failed to fetch by-strategy-version')
+  return res.json() as Promise<StrategyVersionRow[]>
+}
+
+export async function fetchRuntimeRecommendations(days = 7): Promise<RuntimeRecommendations> {
+  const res = await fetch(`${API_V1}${endpoints.analytics.runtimeRecommendations(days)}`)
+  if (!res.ok) throw new Error('Failed to fetch runtime recommendations')
+  return res.json() as Promise<RuntimeRecommendations>
 }
 
 export async function fetchPaperAccounts() {
@@ -334,4 +388,16 @@ export async function fetchSupervisorStatus() {
   const res = await fetch(`${API_V1}${endpoints.supervisor.status()}`)
   if (!res.ok) throw new Error('Failed to fetch supervisor status')
   return res.json() as Promise<SupervisorStatus>
+}
+
+export interface SchedulerStatus {
+  running: boolean
+  started_at: number | null
+  jobs: Record<string, { last_run_at?: number; last_error?: string }>
+}
+
+export async function fetchSchedulerStatus(): Promise<SchedulerStatus> {
+  const res = await fetch(`${API_V1}${endpoints.scheduler.status()}`)
+  if (!res.ok) throw new Error('Failed to fetch scheduler status')
+  return res.json()
 }
