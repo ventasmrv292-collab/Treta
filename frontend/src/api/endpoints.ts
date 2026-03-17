@@ -101,6 +101,10 @@ export const endpoints = {
     list: (params?: { limit?: number; event_type?: string; module?: string }) =>
       `/bot-logs${qs(params || {})}`,
   },
+  signalEvents: {
+    list: (params?: { limit?: number; status?: string }) =>
+      `/signal-events${qs(params || {})}`,
+  },
   supervisor: {
     status: () => '/supervisor/status',
   },
@@ -382,6 +386,15 @@ export async function fetchBotLogs(params?: { limit?: number; event_type?: strin
   const res = await fetch(`${API_V1}/bot-logs?${q}`)
   if (!res.ok) throw new Error('Failed to fetch bot logs')
   return res.json() as Promise<BotLogEntry[]>
+}
+
+export async function fetchSignalEvents(params?: { limit?: number; status?: string }) {
+  const q = new URLSearchParams()
+  if (params?.limit) q.set('limit', String(params.limit))
+  if (params?.status) q.set('status', params.status)
+  const res = await fetch(`${API_V1}${endpoints.signalEvents.list(params)}`)
+  if (!res.ok) throw new Error('Failed to fetch signal events')
+  return res.json() as Promise<import('../types').SignalEventRow[]>
 }
 
 export async function fetchSupervisorStatus() {

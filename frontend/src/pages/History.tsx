@@ -187,6 +187,7 @@ export function History() {
               <th className="p-3 font-medium">{t('history.symbol')}</th>
               <th className="p-3 font-medium">{t('history.source')}</th>
               <th className="p-3 font-medium">{t('history.status')}</th>
+              <th className="p-3 font-medium" title="Tipo de entrada: MARKET, LIMIT, STOP; o estado señal: PENDING, FILLED, EXPIRED, STALE">Entrada / Señal</th>
               <th className="p-3 font-medium">{t('history.account')}</th>
               <th className="p-3 font-medium">{t('history.margin')}</th>
               <th className="p-3 font-medium">{t('history.capBefore')}</th>
@@ -212,7 +213,7 @@ export function History() {
           <tbody>
             {trades.length === 0 && (
               <tr>
-                <td colSpan={24} className="p-8 text-center text-[var(--text-muted)]">
+                <td colSpan={25} className="p-8 text-center text-[var(--text-muted)]">
                   {t('history.noTrades')}
                 </td>
               </tr>
@@ -223,6 +224,14 @@ export function History() {
                 <td className="p-3">{trade.symbol}</td>
                 <td className="p-3">{trade.source}</td>
                 <td className="p-3">{trade.status ?? (trade.closed_at ? 'CLOSED' : 'OPEN')}</td>
+                <td className="p-3">
+                  <span className="font-medium text-[var(--accent)]">{trade.order_type_entry ?? 'MARKET'}</span>
+                  {trade.signal_event_status && trade.signal_event_status !== 'ACCEPTED' && (
+                    <span className="ml-1 text-xs text-[var(--text-muted)]" title="Estado señal">
+                      ({trade.signal_event_status})
+                    </span>
+                  )}
+                </td>
                 <td className="p-3">{trade.account_id ?? '—'}</td>
                 <td className="p-3">{trade.margin_used_usdt != null ? `$${parseFloat(trade.margin_used_usdt).toFixed(2)}` : '—'}</td>
                 <td className="p-3">{trade.capital_before_usdt != null ? `$${parseFloat(trade.capital_before_usdt).toFixed(2)}` : '—'}</td>

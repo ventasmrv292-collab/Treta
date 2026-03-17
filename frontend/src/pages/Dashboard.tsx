@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { CandlestickChart } from '../components/CandlestickChart'
-import { fetchKlines, fetchPrice, fetchDashboard, fetchPaperAccounts, fetchDashboardSummary, fetchTrades, fetchSupervisorStatus, fetchSchedulerStatus, fetchBotLogs } from '../api/endpoints'
+import { fetchKlines, fetchPrice, fetchDashboard, fetchPaperAccounts, fetchDashboardSummary, fetchTrades, fetchSupervisorStatus, fetchSchedulerStatus, fetchBotLogs, fetchSignalEvents } from '../api/endpoints'
 import { EventExplanationModal } from '../components/EventExplanationModal'
 import { getEventExplanation } from '../constants/eventExplanations'
 import { useI18n } from '../contexts/I18nContext'
 import { WS_BASE } from '../config'
-import type { CandleData, PaperAccount, Trade } from '../types'
+import type { CandleData, PaperAccount, Trade, SignalEventRow } from '../types'
 import type { StrategyOverlayId } from '../utils/strategyIndicators'
 import { format } from 'date-fns'
 import { TrendingUp, Activity, DollarSign, Percent, Wallet, History, ArrowRight, Bot, FileText } from 'lucide-react'
@@ -54,6 +54,7 @@ export function Dashboard() {
     open_positions_count?: number
   } | null>(null)
   const [recentTrades, setRecentTrades] = useState<Trade[]>([])
+  const [recentSignals, setRecentSignals] = useState<SignalEventRow[]>([])
   const [supervisorStatus, setSupervisorStatus] = useState<{ running: boolean; last_cycle_at: number | null; check_interval_seconds: number } | null>(null)
   const [schedulerStatus, setSchedulerStatus] = useState<{ running: boolean; started_at: number | null; jobs: Record<string, { last_run_at?: number; last_error?: string }> } | null>(null)
   const [botLogs, setBotLogs] = useState<{ id: number; level: string; event_type: string; message: string; created_at: string }[]>([])
@@ -213,12 +214,14 @@ export function Dashboard() {
     fetchTrades({ page: 1, size: 10 })
       .then((r) => setRecentTrades(r.items))
       .catch(() => setRecentTrades([]))
+    fetchSignalEvents({ limit: 15 }).then(setRecentSignals).catch(() => setRecentSignals([]))
   }, [])
   useEffect(() => {
     const t = setInterval(() => {
       fetchTrades({ page: 1, size: 10 })
         .then((r) => setRecentTrades(r.items))
         .catch(() => {})
+      fetchSignalEvents({ limit: 15 }).then(setRecentSignals).catch(() => {})
     }, DASHBOARD_REFRESH_MS)
     return () => clearInterval(t)
   }, [])
@@ -661,13 +664,14 @@ export function Dashboard() {
                 <th className="p-2 font-medium">Entrada</th>
                 <th className="p-2 font-medium">Salida</th>
                 <th className="p-2 font-medium">PnL neto</th>
+                <th className="p-2 font-medium">Tipo</th>
                 <th className="p-2 font-medium">Estado</th>
               </tr>
             </thead>
             <tbody>
               {recentTrades.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="p-6 text-center text-[var(--text-muted)]">
+                  <td colSpan={8} className="p-6 text-center text-[var(--text-muted)]">
                     {t('dashboard.noOperations')} <Link to="/trade" className="text-[var(--accent)] hover:underline">{t('dashboard.newTradeLink')}</Link>
                   </td>
                 </tr>
@@ -682,7 +686,57 @@ export function Dashboard() {
                   <td className={`p-2 font-medium ${t.net_pnl_usdt != null && parseFloat(t.net_pnl_usdt) >= 0 ? 'text-[var(--positive)]' : 'text-[var(--negative)]'}`}>
                     {t.net_pnl_usdt != null ? `$${parseFloat(t.net_pnl_usdt).toFixed(2)}` : '—'}
                   </td>
+                  <td className="p-2">
+                    <span className="font-medium text-[var(--accent)]">{t.order_type_entry ?? 'MARKET'}</span>
+                  </td>
                   <td className="p-2">{t.status ?? (t.closed_at ? 'CLOSED' : 'OPEN')}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Señales recientes: estado MARKET/LIMIT/STOP, PENDING, FILLED, EXPIRED, STALE */}
+      <div className="rounded-xl border border-white/10 bg-[var(--surface-muted)] p-4">
+        <h3 className="mb-4 flex items-center gap-2 text-sm font-semibold text-[var(--text-muted)]">
+          <FileText className="h-4 w-4" />
+          Señales recientes (estado)
+        </h3>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[400px] text-sm">
+            <thead>
+              <tr className="border-b border-white/10 text-left text-[var(--text-muted)]">
+                <th className="p-2 font-medium">Fecha</th>
+                <th className="p-2 font-medium">Estrategia</th>
+                <th className="p-2 font-medium">TF</th>
+                <th className="p-2 font-medium">Estado</th>
+                <th className="p-2 font-medium">Trade</th>
+              </tr>
+            </thead>
+            <tbody>
+              {recentSignals.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="p-6 text-center text-[var(--text-muted)]">Sin señales recientes</td>
+                </tr>
+              )}
+              {recentSignals.map((s) => (
+                <tr key={s.id} className="border-b border-white/5 hover:bg-white/5">
+                  <td className="p-2">{s.created_at ? format(new Date(s.created_at), 'dd/MM/yy HH:mm') : '—'}</td>
+                  <td className="p-2">{s.strategy_name}</td>
+                  <td className="p-2">{s.timeframe}</td>
+                  <td className="p-2">
+                    <span className={`rounded px-1.5 py-0.5 text-xs font-medium ${
+                      s.status === 'ACCEPTED' ? 'bg-green-500/20 text-green-400' :
+                      s.status === 'PENDING_ORDER' ? 'bg-amber-500/20 text-amber-400' :
+                      s.status === 'STALE' || s.status === 'EXPIRED' ? 'bg-red-500/20 text-red-400' :
+                      s.status === 'REJECTED' ? 'bg-slate-500/20 text-slate-400' :
+                      'bg-white/10'
+                    }`}>
+                      {s.status}
+                    </span>
+                  </td>
+                  <td className="p-2">{s.trade_id != null ? `#${s.trade_id}` : '—'}</td>
                 </tr>
               ))}
             </tbody>

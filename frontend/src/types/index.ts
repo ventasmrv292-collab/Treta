@@ -67,6 +67,8 @@ export interface Trade {
   updated_at: string
   account_id?: number | null
   status?: string
+  /** Estado de la señal asociada: RECEIVED, ACCEPTED, PENDING_ORDER, STALE, EXPIRED, REJECTED */
+  signal_event_status?: string | null
   opened_at?: string
   margin_used_usdt?: string | null
   capital_before_usdt?: string | null
@@ -182,6 +184,22 @@ export interface BotLogEntry {
   related_trade_id: number | null
   related_signal_event_id: number | null
   created_at: string
+}
+
+/** Señal: RECEIVED, ACCEPTED, PENDING_ORDER, STALE, EXPIRED, REJECTED */
+export interface SignalEventRow {
+  id: number
+  source: string
+  symbol: string
+  timeframe: string
+  strategy_family: string
+  strategy_name: string
+  strategy_version: string
+  status: string
+  decision_reason: string | null
+  trade_id: number | null
+  created_at: string | null
+  processed_at: string | null
 }
 
 export interface SupervisorStatus {
