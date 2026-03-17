@@ -1,5 +1,4 @@
 """Trades API."""
-import asyncio
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, Query, HTTPException
@@ -20,7 +19,6 @@ from app.services.trade_service import (
     close_trade_and_compute_pnl,
 )
 from app.services.bot_log_service import log_event as bot_log_event, MODULE_TRADE, EVENT_TRADE_OPENED
-from app.services.pushover_service import send_trade_opened
 
 router = APIRouter()
 
@@ -48,7 +46,6 @@ async def create_manual_trade(
         context={"symbol": trade.symbol, "position_side": trade.position_side, "quantity": str(trade.quantity)},
         related_trade_id=trade.id,
     )
-    asyncio.create_task(send_trade_opened(trade))
     return trade
 
 

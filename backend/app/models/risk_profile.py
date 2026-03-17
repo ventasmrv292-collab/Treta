@@ -21,8 +21,6 @@ class RiskProfile(Base):
     risk_pct_per_trade: Mapped[Decimal | None] = mapped_column(Numeric(8, 4), nullable=True)
     max_open_positions: Mapped[int] = mapped_column(Integer, nullable=False, default=5)
     max_margin_pct_of_account: Mapped[Decimal] = mapped_column(Numeric(8, 4), nullable=False, default=100)
-    max_notional_usdt: Mapped[Decimal | None] = mapped_column(Numeric(20, 4), nullable=True)
-    max_notional_pct_of_equity: Mapped[Decimal | None] = mapped_column(Numeric(8, 4), nullable=True)
     max_daily_loss_usdt: Mapped[Decimal | None] = mapped_column(Numeric(20, 4), nullable=True)
     max_daily_loss_pct: Mapped[Decimal | None] = mapped_column(Numeric(8, 4), nullable=True)
     cooldown_after_losses: Mapped[int | None] = mapped_column(Integer, nullable=True)

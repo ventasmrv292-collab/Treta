@@ -55,7 +55,7 @@ async def _get_current_price() -> Decimal | None:
             pass
     try:
         svc = MarketDataService()
-        p, _ = await svc.get_current_price(SYMBOL_PRICE)
+        p = await svc.get_current_price(SYMBOL_PRICE)
         return p
     except Exception as e:
         logger.debug("supervisor: no se pudo obtener precio: %s", e)
