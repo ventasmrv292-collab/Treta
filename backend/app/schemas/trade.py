@@ -132,6 +132,8 @@ class TradeResponse(BaseModel):
     pnl_pct_margin: Decimal | None
     created_at: datetime
     updated_at: datetime
+    # Estado de la señal asociada (si existe): RECEIVED, ACCEPTED, PENDING_ORDER, STALE, EXPIRED, REJECTED
+    signal_event_status: str | None = None
 
 
 class TradeListResponse(BaseModel):

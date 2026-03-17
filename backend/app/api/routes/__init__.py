@@ -1,6 +1,6 @@
 """API routes."""
 from fastapi import APIRouter
-from app.api.routes import trades, strategies, fee_config, candles, market, webhook, analytics, backtest, ws, paper_accounts, risk_profiles, bot_logs, supervisor
+from app.api.routes import trades, strategies, fee_config, candles, market, webhook, analytics, backtest, ws, paper_accounts, risk_profiles, bot_logs, signal_events, supervisor
 
 # Scheduler y dashboard requieren el refactor (scheduler_service, etc.). Si no están desplegados, la app arranca sin ellos.
 try:
@@ -18,6 +18,7 @@ if _has_scheduler:
 api_router.include_router(paper_accounts.router, prefix="/paper-accounts", tags=["paper-accounts"])
 api_router.include_router(risk_profiles.router, prefix="/risk-profiles", tags=["risk-profiles"])
 api_router.include_router(bot_logs.router, prefix="/bot-logs", tags=["bot-logs"])
+api_router.include_router(signal_events.router, prefix="/signal-events", tags=["signal-events"])
 api_router.include_router(supervisor.router, prefix="/supervisor", tags=["supervisor"])
 api_router.include_router(trades.router, prefix="/trades", tags=["trades"])
 api_router.include_router(strategies.router, prefix="/strategies", tags=["strategies"])

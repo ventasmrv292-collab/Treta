@@ -25,6 +25,8 @@ from app.models.account_ledger import AccountLedger
 from app.services.strategies import get_strategy_fn, STRATEGY_REGISTRY
 from app.services.strategies.base import StrategySignal
 from app.services.trade_service import prepare_n8n_trade, n8n_create_to_trade, has_exposure_conflict
+from app.services.order_execution import classify_entry, pending_order_triggered
+from app.models.pending_order import PendingOrder
 from app.schemas.trade import N8nTradeCreate
 from app.services.bot_log_service import (
     log_event as bot_log_event,
@@ -88,7 +90,10 @@ def _signal_to_n8n_payload(
     quantity: Decimal,
     leverage: int,
     strategy_id: int | None = None,
+    entry_price_override: Decimal | None = None,
+    entry_order_type: str = "MARKET",
 ) -> N8nTradeCreate:
+    entry = entry_price_override if entry_price_override is not None else signal.entry_price
     return N8nTradeCreate(
         source="BACKEND",
         strategy_id=strategy_id,
@@ -100,11 +105,11 @@ def _signal_to_n8n_payload(
         timeframe=signal.timeframe,
         position_side=signal.position_side,
         leverage=leverage,
-        entry_price=signal.entry_price,
+        entry_price=entry,
         take_profit=signal.take_profit,
         stop_loss=signal.stop_loss,
         quantity=quantity,
-        entry_order_type="MARKET",
+        entry_order_type=entry_order_type,
         maker_taker_entry="TAKER",
         signal_timestamp=datetime.now(timezone.utc),
         strategy_params_json=json.dumps(signal.metadata, default=str) if signal.metadata else None,
@@ -149,14 +154,17 @@ def _validate_signal_limits(
 async def _execute_signal(
     session: AsyncSession,
     signal: StrategySignal,
+    current_price: Decimal,
     account_id: int | None,
     risk_profile_id: int | None,
     strategy_id: int | None = None,
     runtime_cfg: StrategyRuntimeConfig | None = None,
 ) -> Trade | None:
-    """Crea signal_event, valida riesgo y capital, crea trade y ledger. Retorna trade si se abrió, None si rechazado."""
+    """
+    Crea signal_event, clasifica entrada (MARKET/LIMIT/STOP/STALE), y o bien abre trade (MARKET),
+    crea orden pendiente (LIMIT/STOP) o marca señal STALE. Retorna trade si se abrió, None en caso contrario.
+    """
     idempotency_key = f"backend|{signal.strategy_family}|{signal.strategy_name}|{signal.timeframe}|{signal.entry_price}|{signal.symbol}"
-    payload = _signal_to_n8n_payload(signal, account_id, risk_profile_id, idempotency_key, DEFAULT_QUANTITY, DEFAULT_LEVERAGE, strategy_id=strategy_id)
     payload_json = json.dumps({
         "position_side": signal.position_side,
         "entry_price": str(signal.entry_price),
@@ -194,6 +202,88 @@ async def _execute_signal(
             )
             await session.commit()
             return None
+
+    # Clasificación de entrada realista: MARKET / LIMIT / STOP / STALE
+    entry_tol = float(runtime_cfg.entry_tolerance_pct) if runtime_cfg and runtime_cfg.entry_tolerance_pct is not None else 0.1
+    max_dev = float(runtime_cfg.max_entry_deviation_pct) if runtime_cfg and runtime_cfg.max_entry_deviation_pct is not None else 2.0
+    # Sin bar_high/bar_low aquí: evitar lookahead. La señal se genera al cierre de la vela;
+    # no usamos high/low de esa misma vela para "rellenar en la misma barra". Los fills
+    # intrabar solo ocurren al evaluar órdenes PENDIENTES (creadas en runs anteriores)
+    # con la vela actual en _evaluate_pending_orders.
+    decision = classify_entry(
+        signal, current_price,
+        entry_tolerance_pct=entry_tol,
+        max_entry_deviation_pct=max_dev,
+        bar_high=None,
+        bar_low=None,
+    )
+
+    if decision.action == "STALE":
+        signal_event.status = "STALE"
+        signal_event.decision_reason = decision.reason
+        await bot_log_event(
+            session,
+            "WARN",
+            MODULE_STRATEGY,
+            EVENT_SIGNAL_REJECTED,
+            f"Signal stale/missed: {decision.reason}",
+            context={"reason": decision.reason, "strategy": signal.strategy_name, "entry": str(signal.entry_price), "current": str(current_price)},
+            related_signal_event_id=signal_event.id,
+        )
+        await session.commit()
+        return None
+
+    if decision.action in ("LIMIT", "STOP"):
+        # Crear orden pendiente; no abrir trade aún
+        expires_at = None
+        if runtime_cfg and runtime_cfg.pending_order_expiry_minutes is not None:
+            from datetime import timedelta
+            expires_at = datetime.now(timezone.utc) + timedelta(minutes=runtime_cfg.pending_order_expiry_minutes)
+        pending = PendingOrder(
+            signal_event_id=signal_event.id,
+            strategy_id=strategy_id,
+            account_id=account_id,
+            risk_profile_id=risk_profile_id,
+            symbol=signal.symbol,
+            timeframe=signal.timeframe,
+            position_side=signal.position_side,
+            order_type=decision.order_type,
+            trigger_price=decision.fill_price or signal.entry_price,
+            quantity=DEFAULT_QUANTITY,
+            leverage=DEFAULT_LEVERAGE,
+            take_profit=signal.take_profit,
+            stop_loss=signal.stop_loss,
+            strategy_family=signal.strategy_family,
+            strategy_name=signal.strategy_name,
+            strategy_version=signal.strategy_version,
+            idempotency_key=idempotency_key,
+            payload_json=payload_json,
+            status="PENDING",
+            expires_at=expires_at,
+            expires_after_bars=runtime_cfg.pending_order_expiry_bars if runtime_cfg else None,
+        )
+        session.add(pending)
+        signal_event.status = "PENDING_ORDER"
+        signal_event.decision_reason = decision.reason
+        await bot_log_event(
+            session,
+            "INFO",
+            MODULE_STRATEGY,
+            EVENT_STRATEGY_SIGNAL_CREATED,
+            f"Pending {decision.order_type} order created: {signal.strategy_name} @ {decision.fill_price}",
+            context={"order_type": decision.order_type, "trigger": str(decision.fill_price), "strategy": signal.strategy_name},
+            related_signal_event_id=signal_event.id,
+        )
+        await session.commit()
+        return None
+
+    # MARKET: entrada inmediata al precio actual (con slippage en prepare_n8n_trade)
+    payload = _signal_to_n8n_payload(
+        signal, account_id, risk_profile_id, idempotency_key, DEFAULT_QUANTITY, DEFAULT_LEVERAGE,
+        strategy_id=strategy_id,
+        entry_price_override=decision.fill_price,
+        entry_order_type="MARKET",
+    )
 
     try:
         data_override = await prepare_n8n_trade(session, payload)
@@ -352,6 +442,155 @@ async def _execute_signal(
     return trade
 
 
+def _pending_order_to_payload(pending: PendingOrder) -> N8nTradeCreate:
+    """Construye N8nTradeCreate desde una orden pendiente (para fill)."""
+    maker_taker = "MAKER" if pending.order_type == "LIMIT" else "TAKER"
+    return N8nTradeCreate(
+        source="BACKEND",
+        strategy_id=pending.strategy_id,
+        symbol=pending.symbol,
+        market="PERP",
+        strategy_family=pending.strategy_family,
+        strategy_name=pending.strategy_name,
+        strategy_version=pending.strategy_version,
+        timeframe=pending.timeframe,
+        position_side=pending.position_side,
+        leverage=pending.leverage,
+        entry_price=pending.trigger_price,
+        take_profit=pending.take_profit,
+        stop_loss=pending.stop_loss,
+        quantity=pending.quantity,
+        entry_order_type=pending.order_type,
+        maker_taker_entry=maker_taker,
+        signal_timestamp=datetime.now(timezone.utc),
+        strategy_params_json=pending.payload_json,
+        notes=f"Fill pending {pending.order_type} {pending.strategy_name}",
+        account_id=pending.account_id,
+        risk_profile_id=pending.risk_profile_id,
+        idempotency_key=pending.idempotency_key,
+    )
+
+
+async def _fill_pending_order(session: AsyncSession, pending: PendingOrder) -> Trade | None:
+    """Ejecuta el fill de una orden pendiente: crea trade, actualiza orden y signal_event."""
+    payload = _pending_order_to_payload(pending)
+    try:
+        data_override = await prepare_n8n_trade(session, payload)
+    except ValueError as e:
+        logger.warning("fill_pending_order rejected: %s", e)
+        return None
+    entry_price = Decimal(str(payload.entry_price))
+    quantity = data_override.get("quantity") or pending.quantity
+    stop_loss = payload.stop_loss
+    take_profit_base = Decimal(str(payload.take_profit)) if payload.take_profit else None
+    if (
+        take_profit_base is not None
+        and stop_loss is not None
+        and (fee_rate := data_override.get("fee_rate")) is not None
+    ):
+        entry_fee = data_override.get("entry_fee") or Decimal("0")
+        slippage_est = data_override.get("slippage_est_usdt") or Decimal("0")
+        exit_notional_at_tp = quantity * take_profit_base
+        exit_fee_est = calc_exit_fee(exit_notional_at_tp, fee_rate)
+        expected_net_rr, _, _ = compute_expected_net_rr(
+            entry_price, take_profit_base, stop_loss, quantity,
+            payload.position_side, entry_fee, exit_fee_est, slippage_est,
+        )
+        data_override["expected_net_rr_at_open"] = expected_net_rr
+        data_override["estimated_total_cost_usdt_at_open"] = estimate_total_cost_usdt(
+            entry_fee, exit_fee_est, slippage_est
+        )
+        data_override["estimated_total_cost_pct_at_open"] = estimate_total_cost_pct(
+            data_override["estimated_total_cost_usdt_at_open"], quantity * entry_price
+        )
+        data_override["take_profit_base_at_open"] = take_profit_base
+    data_override.pop("fee_rate", None)
+    data_override.pop("slippage_est_usdt", None)
+    data = n8n_create_to_trade(payload, data_override)
+    trade = Trade(**data)
+    trade.signal_event_id = pending.signal_event_id
+    trade.strategy_id = pending.strategy_id
+    session.add(trade)
+    await session.flush()
+
+    pending.status = "FILLED"
+    pending.trade_id = trade.id
+    pending.filled_at = datetime.now(timezone.utc)
+    signal_event = (await session.execute(select(SignalEvent).where(SignalEvent.id == pending.signal_event_id))).scalar_one_or_none()
+    if signal_event:
+        signal_event.status = "ACCEPTED"
+        signal_event.trade_id = trade.id
+        signal_event.processed_at = datetime.now(timezone.utc)
+
+    if trade.account_id is not None:
+        acc = (await session.execute(select(PaperAccount).where(PaperAccount.id == trade.account_id))).scalar_one_or_none()
+        if acc:
+            balance_before = acc.current_balance_usdt or Decimal("0")
+            acc.used_margin_usdt = (acc.used_margin_usdt or Decimal("0")) + (trade.margin_used_usdt or Decimal("0"))
+            acc.current_balance_usdt = balance_before - (trade.entry_fee or Decimal("0"))
+            acc.available_balance_usdt = acc.current_balance_usdt - acc.used_margin_usdt
+            ledger = AccountLedger(
+                account_id=trade.account_id,
+                trade_id=trade.id,
+                event_type="TRADE_OPEN",
+                amount_usdt=-(trade.entry_fee or Decimal("0")) - (trade.margin_used_usdt or Decimal("0")),
+                balance_before_usdt=balance_before,
+                balance_after_usdt=acc.current_balance_usdt,
+                meta_json=json.dumps({"trade_id": trade.id, "entry_fee": str(trade.entry_fee), "margin_used": str(trade.margin_used_usdt)}),
+            )
+            session.add(ledger)
+    await bot_log_event(
+        session, "INFO", MODULE_STRATEGY, EVENT_STRATEGY_SIGNAL_CREATED,
+        f"Trade #{trade.id} opened from pending {pending.order_type}: {pending.strategy_name}",
+        context={"trade_id": trade.id, "order_type": pending.order_type},
+        related_trade_id=trade.id, related_signal_event_id=pending.signal_event_id,
+    )
+    await bot_log_event(
+        session, "INFO", "trade_service", EVENT_TRADE_OPENED,
+        f"Trade #{trade.id} opened: {trade.symbol} {trade.position_side}",
+        context={"symbol": trade.symbol, "position_side": trade.position_side},
+        related_trade_id=trade.id,
+    )
+    asyncio.create_task(send_trade_opened(trade))
+    return trade
+
+
+async def _evaluate_pending_orders(
+    session: AsyncSession,
+    symbol: str,
+    timeframe: str,
+    bar_high: Decimal,
+    bar_low: Decimal,
+) -> list[Trade]:
+    """Evalúa órdenes PENDING para symbol/timeframe con la vela (high, low); llena las activadas y retorna trades abiertos."""
+    from sqlalchemy import and_
+    result = await session.execute(
+        select(PendingOrder).where(
+            and_(
+                PendingOrder.symbol == symbol,
+                PendingOrder.timeframe == timeframe,
+                PendingOrder.status == "PENDING",
+            )
+        )
+    pendings = list(result.scalars().all())
+    now = datetime.now(timezone.utc)
+    opened: list[Trade] = []
+    for po in pendings:
+        if po.expires_at is not None and now >= po.expires_at:
+            po.status = "EXPIRED"
+            signal_ev = (await session.execute(select(SignalEvent).where(SignalEvent.id == po.signal_event_id))).scalar_one_or_none()
+            if signal_ev:
+                signal_ev.status = "EXPIRED"
+                signal_ev.decision_reason = "PENDING_ORDER_EXPIRED_TIME"
+            logger.debug("Pending order %s expired (time)", po.id)
+            continue
+        if pending_order_triggered(po.order_type, po.trigger_price, po.position_side, bar_high, bar_low):
+            trade = await _fill_pending_order(session, po)
+            if trade:
+                opened.append(trade)
+    return opened
+
+
 async def run_strategies_for_timeframe(interval: str) -> list[Trade]:
     """
     Carga estrategias activas que apliquen al intervalo, obtiene velas cerradas de DB,
@@ -416,6 +655,7 @@ async def run_strategies_for_timeframe(interval: str) -> list[Trade]:
                         continue
                     if signal.position_side == "SHORT" and not cfg.allow_short:
                         continue
+                current_price = Decimal(str(candles[-1]["close"]))
                 async with async_session_maker() as exec_session:
                     if cfg is not None:
                         blocked, reason = await has_exposure_conflict(
@@ -444,9 +684,21 @@ async def run_strategies_for_timeframe(interval: str) -> list[Trade]:
                             )
                             await exec_session.commit()
                             continue
-                    trade = await _execute_signal(exec_session, signal, account_id, risk_profile_id, strategy_id=strat.id, runtime_cfg=cfg)
+                    trade = await _execute_signal(
+                        exec_session, signal, current_price,
+                        account_id, risk_profile_id,
+                        strategy_id=strat.id, runtime_cfg=cfg,
+                    )
                     if trade:
                         opened.append(trade)
             except Exception as e:
                 logger.exception("strategy_engine: %s/%s failed: %s", strat.family, strat.name, e)
+
+        # Evaluar órdenes pendientes con la última vela (high/low): fill o expire
+        bar_high = Decimal(str(candles[-1]["high"]))
+        bar_low = Decimal(str(candles[-1]["low"]))
+        async with async_session_maker() as eval_session:
+            filled = await _evaluate_pending_orders(eval_session, SYMBOL, interval, bar_high, bar_low)
+            opened.extend(filled)
+            await eval_session.commit()
     return opened

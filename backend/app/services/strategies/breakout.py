@@ -76,6 +76,8 @@ def breakout_volume_v2(candles: list[dict[str, Any]], params: dict[str, Any] | N
     sl_dist_min = last * min_stop_pct
     sl_dist = max(sl_dist_atr, sl_dist_min)
     tp_dist = sl_dist * min_rr
+    # Entry = nivel de breakout (prev_high): orden STOP en motor; si precio ya rompió, fill en bar
+    entry_level = prev_high
     return StrategySignal(
         strategy_family="BREAKOUT",
         strategy_name="breakout_volume_v2",
@@ -83,13 +85,14 @@ def breakout_volume_v2(candles: list[dict[str, Any]], params: dict[str, Any] | N
         symbol=candles[-1].get("symbol", "BTCUSDT"),
         timeframe=params.get("timeframe", "15m"),
         position_side="LONG",
-        entry_price=Decimal(str(last)),
-        take_profit=Decimal(str(round(last + tp_dist, 2))),
-        stop_loss=Decimal(str(round(last - sl_dist, 2))),
+        entry_price=Decimal(str(round(entry_level, 2))),
+        take_profit=Decimal(str(round(entry_level + tp_dist, 2))),
+        stop_loss=Decimal(str(round(entry_level - sl_dist, 2))),
         confidence=0.8,
         metadata={
             "reason": "breakout_volume_v2",
             "prev_high": prev_high,
+            "close": last,
             "volume_ratio": last_vol / avg_vol if avg_vol else 0,
             "sl_dist_pct": round(sl_dist / last * 100, 4),
         },

@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_db
 from app.models.trade import Trade
+from app.models.signal_event import SignalEvent
 from app.schemas.trade import (
     TradeResponse,
     TradeListResponse,
@@ -112,7 +113,20 @@ async def list_trades(
     result = await db.execute(q)
     items = list(result.scalars().all())
     pages = (total + size - 1) // size if size else 0
-    return TradeListResponse(items=items, total=total, page=page, size=size, pages=pages)
+
+    # Incluir estado de la señal asociada (para mostrar MARKET/LIMIT/STOP/PENDING_ORDER/STALE/EXPIRED)
+    event_map: dict[int, str] = {}
+    signal_ids = [t.signal_event_id for t in items if getattr(t, "signal_event_id", None)]
+    if signal_ids:
+        ev_result = await db.execute(select(SignalEvent.id, SignalEvent.status).where(SignalEvent.id.in_(signal_ids)))
+        event_map = {r.id: r.status for r in ev_result.all()}
+    response_items = [
+        TradeResponse.model_validate(t).model_copy(
+            update={"signal_event_status": event_map.get(t.signal_event_id) if getattr(t, "signal_event_id", None) else None}
+        )
+        for t in items
+    ]
+    return TradeListResponse(items=response_items, total=total, page=page, size=size, pages=pages)
 
 
 @router.get("/{trade_id}", response_model=TradeResponse)
@@ -122,7 +136,13 @@ async def get_trade(trade_id: int, db: AsyncSession = Depends(get_db)):
     trade = result.scalar_one_or_none()
     if not trade:
         raise HTTPException(status_code=404, detail="Trade not found")
-    return trade
+    sig_status = None
+    if getattr(trade, "signal_event_id", None):
+        ev = await db.execute(select(SignalEvent.status).where(SignalEvent.id == trade.signal_event_id))
+        row = ev.first()
+        if row is not None:
+            sig_status = row[0]
+    return TradeResponse.model_validate(trade).model_copy(update={"signal_event_status": sig_status})
 
 
 @router.patch("/{trade_id}/close", response_model=TradeResponse)
