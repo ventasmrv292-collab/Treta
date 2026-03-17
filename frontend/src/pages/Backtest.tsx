@@ -3,14 +3,12 @@ import { api } from '../api/client'
 import { endpoints } from '../api/endpoints'
 import { fetchStrategies, runBacktest } from '../api/endpoints'
 import { useToast } from '../components/Toaster'
-import { useI18n } from '../contexts/I18nContext'
 import type { Strategy } from '../types'
 import type { BacktestRun } from '../types'
 import { format } from 'date-fns'
 import { Play } from 'lucide-react'
 
 export function Backtest() {
-  const { t } = useI18n()
   const { addToast } = useToast()
   const [strategies, setStrategies] = useState<Strategy[]>([])
   const [runs, setRuns] = useState<BacktestRun[]>([])
@@ -40,11 +38,11 @@ export function Backtest() {
   const handleRun = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!form.start_time || !form.end_time) {
-      addToast(t('backtest.toastDates'), 'error')
+      addToast('Indica rango de fechas', 'error')
       return
     }
     if (!form.strategy_family || !form.strategy_name) {
-      addToast(t('backtest.toastStrategy'), 'error')
+      addToast('Selecciona estrategia', 'error')
       return
     }
     setLoading(true)
@@ -63,9 +61,9 @@ export function Backtest() {
         slippage_bps: form.slippage_bps,
       })
       setRuns((prev) => [run, ...prev])
-      addToast(t('backtest.toastDone'), 'success')
+      addToast('Backtest completado', 'success')
     } catch (err) {
-      addToast(err instanceof Error ? err.message : t('backtest.toastError'), 'error')
+      addToast(err instanceof Error ? err.message : 'Error en backtest', 'error')
     } finally {
       setLoading(false)
     }
@@ -76,13 +74,13 @@ export function Backtest() {
 
   return (
     <div className="space-y-8">
-      <h2 className="text-xl font-semibold">{t('backtest.title')}</h2>
+      <h2 className="text-xl font-semibold">Backtesting</h2>
 
       <form onSubmit={handleRun} className="rounded-xl border border-white/10 bg-[var(--surface-muted)] p-6">
-        <h3 className="mb-4 text-sm font-semibold text-[var(--text-muted)]">{t('backtest.newBacktest')}</h3>
+        <h3 className="mb-4 text-sm font-semibold text-[var(--text-muted)]">Nuevo backtest</h3>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <label className="block">
-            <span className="mb-1 block text-sm text-[var(--text-muted)]">{t('backtest.family')}</span>
+            <span className="mb-1 block text-sm text-[var(--text-muted)]">Familia</span>
             <select
               value={form.strategy_family}
               onChange={(e) => setForm((f) => ({ ...f, strategy_family: e.target.value, strategy_name: '' }))}
@@ -95,7 +93,7 @@ export function Backtest() {
             </select>
           </label>
           <label className="block">
-            <span className="mb-1 block text-sm text-[var(--text-muted)]">{t('backtest.strategy')}</span>
+            <span className="mb-1 block text-sm text-[var(--text-muted)]">Estrategia</span>
             <select
               value={form.strategy_name}
               onChange={(e) => {
@@ -111,19 +109,20 @@ export function Backtest() {
             </select>
           </label>
           <label className="block">
-            <span className="mb-1 block text-sm text-[var(--text-muted)]">{t('backtest.interval')}</span>
+            <span className="mb-1 block text-sm text-[var(--text-muted)]">Timeframe</span>
             <select
               value={form.interval}
               onChange={(e) => setForm((f) => ({ ...f, interval: e.target.value }))}
               className="w-full rounded-lg border border-white/10 bg-[var(--surface)] px-3 py-2 text-sm"
             >
+              <option value="1m">1m</option>
+              <option value="5m">5m</option>
               <option value="15m">15m</option>
-              <option value="30m">30m</option>
               <option value="1h">1h</option>
             </select>
           </label>
           <label className="block">
-            <span className="mb-1 block text-sm text-[var(--text-muted)]">{t('backtest.startTime')}</span>
+            <span className="mb-1 block text-sm text-[var(--text-muted)]">Desde</span>
             <input
               type="datetime-local"
               value={form.start_time}
@@ -132,7 +131,7 @@ export function Backtest() {
             />
           </label>
           <label className="block">
-            <span className="mb-1 block text-sm text-[var(--text-muted)]">{t('backtest.endTime')}</span>
+            <span className="mb-1 block text-sm text-[var(--text-muted)]">Hasta</span>
             <input
               type="datetime-local"
               value={form.end_time}
@@ -141,7 +140,7 @@ export function Backtest() {
             />
           </label>
           <label className="block">
-            <span className="mb-1 block text-sm text-[var(--text-muted)]">{t('backtest.initialCapital')}</span>
+            <span className="mb-1 block text-sm text-[var(--text-muted)]">Capital inicial (USDT)</span>
             <input
               type="text"
               value={form.initial_capital}
@@ -150,7 +149,7 @@ export function Backtest() {
             />
           </label>
           <label className="block">
-            <span className="mb-1 block text-sm text-[var(--text-muted)]">{t('backtest.leverage')}</span>
+            <span className="mb-1 block text-sm text-[var(--text-muted)]">Leverage</span>
             <select
               value={form.leverage}
               onChange={(e) => setForm((f) => ({ ...f, leverage: Number(e.target.value) }))}
@@ -161,15 +160,15 @@ export function Backtest() {
             </select>
           </label>
           <label className="block">
-            <span className="mb-1 block text-sm text-[var(--text-muted)]">{t('backtest.feeProfile')}</span>
+            <span className="mb-1 block text-sm text-[var(--text-muted)]">Perfil fees</span>
             <select
               value={form.fee_profile}
               onChange={(e) => setForm((f) => ({ ...f, fee_profile: e.target.value }))}
               className="w-full rounded-lg border border-white/10 bg-[var(--surface)] px-3 py-2 text-sm"
             >
-              <option value="conservative">{t('backtest.conservative')}</option>
-              <option value="realistic">{t('backtest.realistic')}</option>
-              <option value="optimistic">{t('backtest.optimistic')}</option>
+              <option value="conservative">Conservador</option>
+              <option value="realistic">Realista</option>
+              <option value="optimistic">Optimista</option>
             </select>
           </label>
         </div>
@@ -180,33 +179,33 @@ export function Backtest() {
             className="flex items-center gap-2 rounded-lg bg-[var(--accent)] px-4 py-2 font-medium text-white hover:opacity-90 disabled:opacity-50"
           >
             <Play className="h-4 w-4" />
-            {loading ? t('backtest.running') : t('backtest.run')}
+            {loading ? 'Ejecutando...' : 'Ejecutar backtest'}
           </button>
         </div>
       </form>
 
       <div className="rounded-xl border border-white/10 bg-[var(--surface-muted)] p-6">
-        <h3 className="mb-4 text-sm font-semibold text-[var(--text-muted)]">{t('backtest.recentResults')}</h3>
+        <h3 className="mb-4 text-sm font-semibold text-[var(--text-muted)]">Resultados recientes</h3>
         {runs.length === 0 ? (
-          <p className="text-sm text-[var(--text-muted)]">{t('backtest.noBacktestsYet')}</p>
+          <p className="text-sm text-[var(--text-muted)]">Aún no hay backtests.</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-left text-[var(--text-muted)]">
-                  <th className="pb-2 font-medium">{t('backtest.date')}</th>
-                  <th className="pb-2 font-medium">{t('backtest.strategy')}</th>
-                  <th className="pb-2 font-medium">{t('backtest.interval')}</th>
-                  <th className="pb-2 font-medium">{t('backtest.leverage')}</th>
-                  <th className="pb-2 font-medium">{t('backtest.capitalInit')}</th>
-                  <th className="pb-2 font-medium">{t('backtest.capitalEnd')}</th>
-                  <th className="pb-2 font-medium">{t('backtest.returnPct')}</th>
-                  <th className="pb-2 font-medium">{t('backtest.peakEquity')}</th>
-                  <th className="pb-2 font-medium">{t('backtest.drawdown')}</th>
-                  <th className="pb-2 font-medium">{t('backtest.status')}</th>
-                  <th className="pb-2 font-medium">{t('backtest.trades')}</th>
-                  <th className="pb-2 font-medium">{t('backtest.netPnl')}</th>
-                  <th className="pb-2 font-medium">{t('backtest.winRate')}</th>
+                  <th className="pb-2 font-medium">Fecha</th>
+                  <th className="pb-2 font-medium">Estrategia</th>
+                  <th className="pb-2 font-medium">Intervalo</th>
+                  <th className="pb-2 font-medium">Leverage</th>
+                  <th className="pb-2 font-medium">Capital ini.</th>
+                  <th className="pb-2 font-medium">Capital fin.</th>
+                  <th className="pb-2 font-medium">Return %</th>
+                  <th className="pb-2 font-medium">Peak equity</th>
+                  <th className="pb-2 font-medium">Drawdown</th>
+                  <th className="pb-2 font-medium">Estado</th>
+                  <th className="pb-2 font-medium">Trades</th>
+                  <th className="pb-2 font-medium">Net PnL</th>
+                  <th className="pb-2 font-medium">Win rate</th>
                 </tr>
               </thead>
               <tbody>

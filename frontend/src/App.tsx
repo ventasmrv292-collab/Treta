@@ -5,7 +5,6 @@ import { NewTrade } from './pages/NewTrade'
 import { History } from './pages/History'
 import { Analytics } from './pages/Analytics'
 import { Backtest } from './pages/Backtest'
-import { Ayuda } from './pages/Ayuda'
 import { Toaster } from './components/Toaster'
 
 function NotFound() {
@@ -36,7 +35,6 @@ function App() {
           <Route path="history" element={<History />} />
           <Route path="analytics" element={<Analytics />} />
           <Route path="backtest" element={<Backtest />} />
-          <Route path="ayuda" element={<Ayuda />} />
           <Route path="*" element={<NotFound />} />
         </Route>
       </Routes>

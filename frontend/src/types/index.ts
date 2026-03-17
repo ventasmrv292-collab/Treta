@@ -119,8 +119,6 @@ export interface CandleData {
 export interface KlinesResponse {
   symbol: string
   interval: string
-  /** Fuente de los datos: binance, bybit, coingecko */
-  source?: string
   candles: CandleData[]
 }
 

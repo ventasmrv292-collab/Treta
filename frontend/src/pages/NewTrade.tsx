@@ -5,7 +5,7 @@ import { useToast } from '../components/Toaster'
 import type { Strategy, PaperAccount, RiskProfile, PositionSizePreview } from '../types'
 import type { ManualTradeCreate } from '../types'
 
-const TIMEFRAMES = ['15m', '30m', '1h']
+const TIMEFRAMES = ['1m', '5m', '15m', '1h']
 const LEVERAGE_OPTIONS = [10, 20]
 const POSITION_SIDES = ['LONG', 'SHORT'] as const
 const ORDER_TYPES = ['MARKET', 'LIMIT']
@@ -45,9 +45,7 @@ export function NewTrade() {
     fetchPaperAccounts()
       .then((accs) => {
         setPaperAccounts(accs)
-        const activeAccount = accs.find((a) => a.status === 'ACTIVE')
-        const accountId = activeAccount?.id ?? (accs.length > 0 ? accs[0].id : null)
-        if (accountId != null) setSelectedAccountId(accountId)
+        if (accs.length > 0) setSelectedAccountId(accs[0].id)
       })
       .catch(() => {})
     fetchRiskProfiles().then(setRiskProfiles).catch(() => {})
