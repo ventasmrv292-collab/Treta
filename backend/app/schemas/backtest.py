@@ -37,6 +37,37 @@ class BacktestResultResponse(BaseModel):
     exit_reason: str
 
 
+class BacktestRunListResponse(BaseModel):
+    """Schema para listado: sin results para evitar lazy load en async."""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    strategy_family: str
+    strategy_name: str
+    strategy_version: str
+    symbol: str
+    interval: str
+    start_time: datetime
+    end_time: datetime
+    initial_capital: Decimal
+    leverage: int
+    fee_profile: str
+    slippage_bps: float
+    params_json: str | None
+    status: str
+    total_trades: int | None
+    net_pnl: Decimal | None
+    gross_pnl: Decimal | None
+    total_fees: Decimal | None
+    win_rate: float | None
+    profit_factor: float | None
+    max_drawdown_pct: float | None
+    created_at: datetime
+    final_capital: Decimal | None = None
+    peak_equity: Decimal | None = None
+    min_equity: Decimal | None = None
+
+
 class BacktestRunResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

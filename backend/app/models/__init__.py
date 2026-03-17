@@ -10,9 +10,10 @@ from app.models.signal_event import SignalEvent
 from app.models.backtest_equity import BacktestEquityCurve
 from app.models.risk_profile import RiskProfile
 from app.models.bot_log import BotLog
+from app.models.strategy_runtime_config import StrategyRuntimeConfig
 
 __all__ = [
     "Strategy", "Trade", "FeeConfig", "Candle", "BacktestRun", "BacktestResult",
     "PaperAccount", "AccountLedger", "SignalEvent", "BacktestEquityCurve",
-    "RiskProfile", "BotLog",
+    "RiskProfile", "BotLog", "StrategyRuntimeConfig",
 ]

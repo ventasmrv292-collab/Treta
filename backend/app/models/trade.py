@@ -69,6 +69,12 @@ class Trade(Base):
     pnl_pct_notional: Mapped[Decimal | None] = mapped_column(Numeric(12, 4), nullable=True)
     pnl_pct_margin: Mapped[Decimal | None] = mapped_column(Numeric(12, 4), nullable=True)
 
+    # Ex-ante al abrir (FASE 1 net RR)
+    expected_net_rr_at_open: Mapped[Decimal | None] = mapped_column(Numeric(6, 4), nullable=True)
+    estimated_total_cost_usdt_at_open: Mapped[Decimal | None] = mapped_column(Numeric(12, 4), nullable=True)
+    estimated_total_cost_pct_at_open: Mapped[Decimal | None] = mapped_column(Numeric(8, 4), nullable=True)
+    take_profit_base_at_open: Mapped[Decimal | None] = mapped_column(Numeric(20, 8), nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 

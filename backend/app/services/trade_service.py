@@ -1,7 +1,7 @@
 """Trade service - create, close, compute PnL."""
+import asyncio
 from decimal import Decimal
-from datetime import datetime, timezone, date
-import json
+from datetime import datetime, timezone, date, timedelta
 
 from sqlalchemy import select, func, and_
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -10,11 +10,13 @@ from app.models.trade import Trade
 from app.models.fee_config import FeeConfig
 from app.models.paper_account import PaperAccount
 from app.models.risk_profile import RiskProfile
+from app.models.strategy_runtime_config import StrategyRuntimeConfig
 from app.services.fee_engine import FeeEngine, FeeProfile
 from app.services.trading_capital import (
     calc_entry_fee,
     calc_margin_used,
     validate_can_open_trade,
+    cap_quantity_to_limits,
 )
 from app.services.risk_management import (
     validate_risk_limits,
@@ -25,7 +27,6 @@ from app.services.risk_management import (
     SIZING_FIXED_NOTIONAL,
     SIZING_RISK_PCT,
 )
-from app.services.market_data import MarketDataService
 from app.services.bot_log_service import (
     log_event as bot_log_event,
     MODULE_TRADE,
@@ -33,11 +34,8 @@ from app.services.bot_log_service import (
     EVENT_TRADE_CLOSED,
     EVENT_RISK_LIMIT_BLOCK,
     EVENT_DUPLICATE_SIGNAL,
-    MODULE_WEBHOOK,
-    EVENT_SIGNAL_RECEIVED,
 )
 from app.schemas.trade import ManualTradeCreate, ManualTradeClose, N8nTradeCreate
-from app.config import settings
 
 
 async def get_default_fee_engine(session: AsyncSession) -> FeeEngine:
@@ -55,6 +53,14 @@ async def get_default_fee_engine(session: AsyncSession) -> FeeEngine:
             include_funding=row.include_funding,
         )
     return FeeEngine.from_profile(FeeProfile.REALISTIC)
+
+
+async def get_default_fee_config_id(session: AsyncSession) -> int | None:
+    """ID del fee config por defecto (para persistir en trades)."""
+    result = await session.execute(
+        select(FeeConfig.id).where(FeeConfig.is_default == True).limit(1)
+    )
+    return result.scalar_one_or_none()
 
 
 def manual_create_to_trade(d: ManualTradeCreate) -> dict:
@@ -178,6 +184,9 @@ async def prepare_manual_trade(session: AsyncSession, payload: ManualTradeCreate
     data["entry_notional"] = entry_notional
     data["margin_used_usdt"] = margin_used
     data["entry_fee"] = entry_fee
+    fee_config_id = await get_default_fee_config_id(session)
+    if fee_config_id is not None:
+        data["fee_config_id"] = fee_config_id
 
     if account_id is not None:
         result = await session.execute(select(PaperAccount).where(PaperAccount.id == account_id))
@@ -235,8 +244,12 @@ def n8n_create_to_trade(d: N8nTradeCreate, data_override: dict | None = None) ->
     }
     if getattr(d, "account_id", None) is not None:
         out["account_id"] = d.account_id
+    if getattr(d, "fee_config_id", None) is not None:
+        out["fee_config_id"] = d.fee_config_id
     if getattr(d, "risk_profile_id", None) is not None:
         out["risk_profile_id"] = d.risk_profile_id
+    if getattr(d, "strategy_id", None) is not None:
+        out["strategy_id"] = d.strategy_id
     if getattr(d, "idempotency_key", None):
         out["idempotency_key"] = d.idempotency_key
     if data_override:
@@ -258,12 +271,7 @@ async def prepare_n8n_trade(session: AsyncSession, payload: N8nTradeCreate) -> d
             raise ValueError("DUPLICATE_SIGNAL")
 
     qty = Decimal(str(payload.quantity))
-    # ideal_entry: precio que viene en la señal (cierre de vela / cálculo de la estrategia).
-    ideal_entry = Decimal(str(payload.entry_price))
-    # entry_price: se usará como precio efectivo de entrada para cálculos previos.
-    # En una integración con exchange real, este valor debería actualizarse con
-    # actual_fill_price cuando se reciba la confirmación de ejecución.
-    entry_price = ideal_entry
+    entry_price = Decimal(str(payload.entry_price))
     risk_profile_id = getattr(payload, "risk_profile_id", None)
     account_id = getattr(payload, "account_id", None)
 
@@ -290,158 +298,80 @@ async def prepare_n8n_trade(session: AsyncSession, payload: N8nTradeCreate) -> d
                     payload.position_side,
                 )
 
-    # --- Validación de mercado y símbolo (USDM perpetual only) ---
-    raw_market = (payload.market or "").lower().strip()
-    # Alias aceptados para USDM perpetual
-    if not raw_market:
-        market_type = "usdm_perpetual"
-    elif raw_market in ("usdm_perpetual", "futures", "perp", "perpetual", "usdm"):
-        market_type = "usdm_perpetual"
-    else:
-        raise ValueError("[SIGNAL_REJECTED] UNSUPPORTED_MARKET")
-
-    # Validamos símbolo compatible con USDM (nombre real en exchangeInfo)
-    symbol_upper = payload.symbol.upper()
-    svc = MarketDataService()
-    try:
-        is_valid = await svc.is_valid_usdm_perpetual_symbol(symbol_upper)
-    except Exception:
-        # Si no podemos comprobarlo por error de Binance, tratamos como problema de precio.
-        raise ValueError("[SIGNAL_REJECTED] PRICE_UNAVAILABLE")
-    if not is_valid:
-        raise ValueError("[SIGNAL_REJECTED] SYMBOL_NOT_USDM_PERPETUAL")
-
-    # --- Ejecución: modo market_with_tolerance ---
-    execution_mode = settings.execution_mode
-    deviation_pct: Decimal | None = None
-    rr_real: Decimal | None = None
-    live_entry_precheck: Decimal | None = None
-
-    if execution_mode == "market_with_tolerance":
-        now = datetime.now(timezone.utc)
-        if payload.signal_timestamp is not None:
-            age_seconds = (now - payload.signal_timestamp).total_seconds()
-            if age_seconds > settings.signal_max_age_seconds:
-                raise ValueError(
-                    f"[SIGNAL_REJECTED] SIGNAL_EXPIRED: age_seconds={age_seconds:.2f} > "
-                    f"signal_max_age_seconds={settings.signal_max_age_seconds}"
-                )
-
-        try:
-            live_entry, is_stale = await svc.get_current_price_with_freshness(symbol_upper)
-        except Exception:
-            raise ValueError("[SIGNAL_REJECTED] PRICE_UNAVAILABLE")
-
-        live_entry_precheck = live_entry
-        if is_stale:
-            raise ValueError("[SIGNAL_REJECTED] PRICE_STALE")
-
-        if ideal_entry <= 0:
-            raise ValueError("[SIGNAL_REJECTED] INVALID_EXECUTION_PRICES")
-
-        deviation_pct = (abs(live_entry_precheck - ideal_entry) / ideal_entry * Decimal("100")).quantize(
-            Decimal("0.0001")
-        )
-        max_dev = Decimal(str(settings.max_entry_deviation_pct))
-        if deviation_pct > max_dev:
-            raise ValueError(
-                f"[SIGNAL_REJECTED] ENTRY_TOO_FAR_FROM_SIGNAL: deviation_pct={float(deviation_pct)} "
-                f"> max_entry_deviation_pct={settings.max_entry_deviation_pct}"
-            )
-
-        if payload.take_profit is None or payload.stop_loss is None:
-            raise ValueError("[SIGNAL_REJECTED] INVALID_EXECUTION_PRICES")
-
-        tp = Decimal(str(payload.take_profit))
-        sl = Decimal(str(payload.stop_loss))
-
-        if payload.position_side == "LONG":
-            risk = live_entry_precheck - sl
-            reward = tp - live_entry_precheck
-        else:
-            risk = sl - live_entry_precheck
-            reward = live_entry_precheck - tp
-
-        if risk <= 0 or reward <= 0:
-            raise ValueError("[SIGNAL_REJECTED] INVALID_EXECUTION_PRICES")
-
-        rr_real = (reward / risk).quantize(Decimal("0.0001"))
-        min_rr = Decimal(str(settings.min_rr_ratio))
-        if rr_real < min_rr:
-            raise ValueError(
-                f"[SIGNAL_REJECTED] RR_BELOW_MIN_REAL: rr_real={float(rr_real)} < "
-                f"min_rr_ratio={settings.min_rr_ratio}"
-            )
-
-        # Si todo es válido, usamos live_entry_precheck como precio efectivo de entrada
-        # para los cálculos preliminares. En un entorno con exchange real, el
-        # actual_fill_price podría diferir ligeramente y debería actualizarse
-        # más adelante en el Trade.
-        entry_price = live_entry_precheck
-
-        # Log de señal aceptada con detalles de ejecución.
-        await bot_log_event(
-            session,
-            "INFO",
-            MODULE_WEBHOOK,
-            EVENT_SIGNAL_RECEIVED,
-            (
-                "[SIGNAL_ACCEPTED] mode=market_with_tolerance "
-                f"market=usdm_perpetual price_source=binance_futures_usdm_last_price "
-                f"ideal_entry={ideal_entry} live_entry={entry_price} "
-                f"deviation_pct={float(deviation_pct)} rr_real={float(rr_real)}"
-            ),
-            context={
-                "symbol": payload.symbol,
-                "market_type": market_type,
-                "ideal_entry": str(ideal_entry),
-                "live_entry_precheck": str(entry_price),
-                "deviation_pct": float(deviation_pct),
-                "rr_real": float(rr_real),
-            },
-        )
-
     entry_notional = (qty * entry_price).quantize(Decimal("0.0001"))
     margin_used = calc_margin_used(entry_notional, payload.leverage)
     engine = await get_default_fee_engine(session)
     rate = engine.config.taker_rate()
     entry_fee = calc_entry_fee(entry_notional, rate)
 
-    data_override: dict = {
+    # Cap quantity to profile/equity limits before rejecting
+    if account_id is not None and profile is not None:
+        acc = (await session.execute(select(PaperAccount).where(PaperAccount.id == account_id))).scalar_one_or_none()
+        if acc:
+            equity_cap = (acc.current_balance_usdt or 0) + (acc.unrealized_pnl_usdt or 0)
+            max_margin_pct = getattr(profile, "max_margin_pct_of_account", None) or Decimal("12")
+            qty_capped = cap_quantity_to_limits(
+                qty,
+                entry_price,
+                payload.leverage,
+                equity_cap,
+                getattr(profile, "max_notional_usdt", None),
+                getattr(profile, "max_notional_pct_of_equity", None),
+                max_margin_pct,
+            )
+            if qty_capped < qty:
+                qty = qty_capped
+                entry_notional = (qty * entry_price).quantize(Decimal("0.0001"))
+                margin_used = calc_margin_used(entry_notional, payload.leverage)
+                entry_fee = calc_entry_fee(entry_notional, rate)
+            min_qty = Decimal("0.0001")
+            if qty < min_qty:
+                raise ValueError(
+                    f"SIZE_CAPPED_BELOW_MIN: quantity capped to {qty} (min {min_qty}); limits exceeded"
+                )
+
+    # Slippage check from runtime config (when strategy_id present)
+    strategy_id = getattr(payload, "strategy_id", None)
+    if strategy_id is not None and entry_notional > 0:
+        rtc = (
+            await session.execute(
+                select(StrategyRuntimeConfig).where(
+                    StrategyRuntimeConfig.strategy_id == strategy_id,
+                    StrategyRuntimeConfig.symbol == payload.symbol,
+                    StrategyRuntimeConfig.timeframe == payload.timeframe,
+                )
+            )
+        ).scalar_one_or_none()
+        if rtc and (rtc.max_slippage_usdt_estimated is not None or rtc.max_slippage_pct_of_notional is not None):
+            slippage_bps = float(getattr(engine.config, "slippage_bps", 5) or 5)
+            slippage_est_usdt = (entry_notional * Decimal(str(slippage_bps / 10000)) * 2).quantize(Decimal("0.01"))
+            slippage_pct = (slippage_est_usdt / entry_notional * 100) if entry_notional else Decimal("0")
+            if rtc.max_slippage_usdt_estimated is not None and slippage_est_usdt > rtc.max_slippage_usdt_estimated:
+                raise ValueError(
+                    f"SLIPPAGE_ESTIMATE_EXCEEDED: estimated {slippage_est_usdt} USDT > max {rtc.max_slippage_usdt_estimated}"
+                )
+            if rtc.max_slippage_pct_of_notional is not None:
+                max_pct = Decimal(str(rtc.max_slippage_pct_of_notional))
+                # Tolerancia 0.0001% para no rechazar por redondeo (ej. 0.1% estimado vs max 0.10%)
+                if slippage_pct > max_pct + Decimal("0.0001"):
+                    raise ValueError(
+                        f"SLIPPAGE_PCT_EXCEEDED: estimated {round(float(slippage_pct), 4)}% > max {rtc.max_slippage_pct_of_notional}%"
+                    )
+
+    fee_config_id = await get_default_fee_config_id(session)
+    slippage_bps = float(getattr(engine.config, "slippage_bps", 5) or 5)
+    slippage_est_usdt = (entry_notional * Decimal(str(slippage_bps / 10000)) * 2).quantize(Decimal("0.01"))
+    rate_dec = engine.config.taker_rate()
+    data_override = {
         "entry_notional": entry_notional,
         "margin_used_usdt": margin_used,
         "entry_fee": entry_fee,
         "quantity": qty,
+        "fee_rate": rate_dec,
+        "slippage_est_usdt": slippage_est_usdt,
     }
-
-    # Guardar metadatos de ejecución dentro de strategy_params_json para no
-    # romper el esquema de la tabla pero tener trazabilidad de ideal vs live.
-    if execution_mode == "market_with_tolerance" and live_entry_precheck is not None:
-        exec_meta = {
-            "execution_mode": execution_mode,
-            "market_type": "usdm_perpetual",
-            "price_source": "binance_futures_usdm_last_price",
-            "ideal_entry": str(ideal_entry),
-            # Precio usado para las validaciones previas a la ejecución.
-            "live_entry_precheck": str(live_entry_precheck),
-            # En paper trading lo igualamos al precheck; en una integración con
-            # exchange real se debería sobreescribir con el fill real.
-            "actual_fill_price": str(entry_price),
-            "deviation_pct": float(deviation_pct) if deviation_pct is not None else None,
-            "rr_real": float(rr_real) if rr_real is not None else None,
-            "signal_timestamp": payload.signal_timestamp.isoformat() if payload.signal_timestamp else None,
-        }
-        base_params: dict
-        if payload.strategy_params_json:
-            try:
-                base_params = json.loads(payload.strategy_params_json)
-            except Exception:
-                base_params = {"raw": payload.strategy_params_json}
-        else:
-            base_params = {}
-        base_params["execution_meta"] = exec_meta
-        data_override["strategy_params_json"] = json.dumps(base_params)
-        data_override["entry_price"] = entry_price
+    if fee_config_id is not None:
+        data_override["fee_config_id"] = fee_config_id
 
     if account_id is not None:
         result = await session.execute(select(PaperAccount).where(PaperAccount.id == account_id))
@@ -476,6 +406,46 @@ async def prepare_n8n_trade(session: AsyncSession, payload: N8nTradeCreate) -> d
     return data_override
 
 
+async def has_exposure_conflict(
+    session: AsyncSession,
+    *,
+    symbol: str,
+    strategy_id: int | None,
+    strategy_name: str,
+    timeframe: str,
+    position_side: str,
+    max_open_positions: int,
+    cooldown_minutes: int,
+) -> tuple[bool, str]:
+    """
+    Devuelve (True, motivo) si no se debe abrir por duplicación/sobreexposición.
+    (False, "") si está OK abrir.
+    """
+    q = select(Trade).where(
+        Trade.symbol == symbol,
+        Trade.status == "OPEN",
+        Trade.position_side == position_side,
+    )
+    if strategy_id is not None:
+        q = q.where(Trade.strategy_id == strategy_id)
+    else:
+        q = q.where(Trade.strategy_name == strategy_name)
+
+    result = await session.execute(q)
+    open_trades = list(result.scalars().all())
+    if len(open_trades) >= max_open_positions:
+        return True, f"EXPOSURE_LIMIT: max_open_positions={max_open_positions}"
+
+    if cooldown_minutes > 0:
+        cutoff = datetime.now(timezone.utc) - timedelta(minutes=cooldown_minutes)
+        for t in open_trades:
+            if t.timeframe == timeframe and (t.opened_at or t.created_at) >= cutoff:
+                ts = t.opened_at or t.created_at
+                return True, f"COOLDOWN_ACTIVE: last_opened_at={ts.isoformat() if ts else '?'}"
+
+    return False, ""
+
+
 async def close_trade_and_compute_pnl(
     session: AsyncSession,
     trade_id: int,
@@ -488,6 +458,9 @@ async def close_trade_and_compute_pnl(
         return None
 
     engine = await get_default_fee_engine(session)
+    default_fee_id = await get_default_fee_config_id(session)
+    if trade.fee_config_id is None and default_fee_id is not None:
+        trade.fee_config_id = default_fee_id
     closed_at = payload.closed_at or datetime.now(timezone.utc)
     res = engine.compute_fees_and_pnl(
         quantity=trade.quantity,
@@ -528,6 +501,8 @@ async def close_trade_and_compute_pnl(
         context={"exit_reason": payload.exit_reason, "net_pnl_usdt": str(res.net_pnl_usdt)},
         related_trade_id=trade_id,
     )
+    from app.services.pushover_service import send_trade_closed
+    asyncio.create_task(send_trade_closed(trade))
     return trade
 
 

@@ -47,6 +47,7 @@ class ManualTradeClose(BaseModel):
 
 class N8nTradeCreate(BaseModel):
     source: str = "n8n"
+    strategy_id: int | None = None
     symbol: str
     market: str = "usdt_m"
     strategy_family: str

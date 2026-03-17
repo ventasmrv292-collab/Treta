@@ -41,22 +41,15 @@ class Settings(BaseSettings):
         import os
         return int(os.environ.get("PORT", self.api_port))
 
-    # Binance (si en tu host da 451, prueba BINANCE_FUTURES_REST_URL=https://fapi1.binance.com)
+    # Binance (si en tu host da 451, prueba otra región de despliegue o BINANCE_FUTURES_REST_URL)
     binance_futures_ws_url: str = "wss://fstream.binance.com/ws"
     binance_futures_rest_url: str = "https://fapi.binance.com"
-
-    # Ejecución de señales (bot n8n)
-    # Modo por defecto: market_with_tolerance (entra a mercado sólo si el precio
-    # actual está cerca del ideal y el RR real sigue siendo válido).
-    execution_mode: str = "market_with_tolerance"
-    # Desviación máxima permitida entre precio ideal de la señal y precio real (%).
-    max_entry_deviation_pct: float = 0.15
-    # Ratio mínimo riesgo/beneficio real (reward/risk) para aceptar la entrada.
-    # Valor moderado por defecto; se puede sobreescribir por entorno.
-    min_rr_ratio: float = 1.2
-    # Tiempo máximo (segundos) que puede pasar entre la marca de tiempo de la
-    # señal y el intento de ejecución antes de considerarla expirada.
-    signal_max_age_seconds: int = 30
+    # Si True, no se usa nunca CoinGecko: solo Binance/Bybit; si ambos fallan, falla.
+    binance_only: bool = False
+    # Si True, se intenta Bybit primero; si falla, Binance. Recomendado si Binance da 451/418 en tu región.
+    bybit_first: bool = False
+    # Si True, tras fallar Bybit y Binance se intenta CoinGecko como último recurso. Por defecto False (solo Bybit + Binance).
+    allow_coingecko_fallback: bool = False
 
     # CORS: orígenes permitidos separados por coma (ej. https://tu-app.vercel.app).
     # En Railway/Render define CORS_ORIGINS con la URL de tu frontend en Vercel.
@@ -72,6 +65,10 @@ class Settings(BaseSettings):
 
     # Regex para permitir *.vercel.app (usado por el middleware si cors_allow_vercel_app=True).
     cors_vercel_regex: str = r"https://[a-z0-9-]+\.vercel\.app"
+
+    # Pushover: notificaciones al abrir/cerrar operaciones (opcional).
+    pushover_user_key: str = ""
+    pushover_app_token: str = ""
 
 
 settings = Settings()
