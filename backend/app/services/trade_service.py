@@ -285,17 +285,23 @@ async def prepare_n8n_trade(session: AsyncSession, payload: N8nTradeCreate) -> d
                 acc = (await session.execute(select(PaperAccount).where(PaperAccount.id == account_id))).scalar_one_or_none()
                 if acc:
                     equity = (acc.current_balance_usdt or 0) + (acc.unrealized_pnl_usdt or 0)
-            if profile.sizing_mode == SIZING_FIXED_QTY and profile.fixed_quantity:
-                qty = calc_position_size_by_fixed_qty(profile.fixed_quantity)
-            elif profile.sizing_mode == SIZING_FIXED_NOTIONAL and profile.fixed_notional_usdt:
-                qty = calc_position_size_by_fixed_notional(profile.fixed_notional_usdt, entry_price)
-            elif profile.sizing_mode == SIZING_RISK_PCT and profile.risk_pct_per_trade and payload.stop_loss:
+            # En esta fase inicial solo se usa RISK_PCT_OF_EQUITY; no FIXED_NOTIONAL ni FIXED_QTY como alternativa.
+            if profile.sizing_mode != SIZING_RISK_PCT:
+                raise ValueError(
+                    "SIZING_ONLY_RISK_PCT: en esta fase solo se usa RISK_PCT_OF_EQUITY (risk_pct_per_trade). "
+                    f"Perfil actual: sizing_mode={profile.sizing_mode}"
+                )
+            if profile.sizing_mode == SIZING_RISK_PCT and profile.risk_pct_per_trade and payload.stop_loss:
                 qty = calc_position_size_by_risk_pct(
                     entry_price,
                     Decimal(str(payload.stop_loss)),
                     equity,
                     profile.risk_pct_per_trade,
                     payload.position_side,
+                )
+            else:
+                raise ValueError(
+                    "SIZING_ONLY_RISK_PCT: perfil RISK_PCT requiere risk_pct_per_trade y stop_loss en la señal."
                 )
 
     entry_notional = (qty * entry_price).quantize(Decimal("0.0001"))

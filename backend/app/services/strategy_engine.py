@@ -56,13 +56,39 @@ DEFAULT_LEVERAGE = 10
 DEFAULT_QUANTITY = Decimal("0.001")
 
 
-async def _get_default_account_and_profile(session: AsyncSession) -> tuple[int | None, int | None]:
-    """Primera cuenta paper activa y primer risk profile (si existen)."""
+async def _get_default_account_and_profile(session: AsyncSession) -> tuple[int | None, int | None, int]:
+    """
+    Primera cuenta paper activa y risk profile a usar (cuenta.default_risk_profile_id o "V2 20x Realista").
+    Retorna (account_id, risk_profile_id, leverage). Leverage sale del perfil (allowed_leverage_json, primer valor) o 20.
+    """
     r = await session.execute(select(PaperAccount).where(PaperAccount.status == "ACTIVE").order_by(PaperAccount.id).limit(1))
     acc = r.scalar_one_or_none()
-    rp = await session.execute(select(RiskProfile).order_by(RiskProfile.id).limit(1))
-    profile = rp.scalar_one_or_none()
-    return (acc.id if acc else None, profile.id if profile else None)
+    account_id = acc.id if acc else None
+    risk_profile_id = None
+    if acc and acc.default_risk_profile_id is not None:
+        risk_profile_id = acc.default_risk_profile_id
+    if risk_profile_id is None:
+        rp = await session.execute(
+            select(RiskProfile).where(RiskProfile.name == "V2 20x Realista").limit(1)
+        )
+        profile = rp.scalar_one_or_none()
+        if profile:
+            risk_profile_id = profile.id
+    if risk_profile_id is None:
+        rp = await session.execute(select(RiskProfile).order_by(RiskProfile.id).limit(1))
+        profile = rp.scalar_one_or_none()
+        risk_profile_id = profile.id if profile else None
+    leverage = 20
+    if risk_profile_id is not None:
+        prof = (await session.execute(select(RiskProfile).where(RiskProfile.id == risk_profile_id))).scalar_one_or_none()
+        if prof and prof.allowed_leverage_json:
+            try:
+                data = json.loads(prof.allowed_leverage_json)
+                if isinstance(data, list) and len(data) > 0 and isinstance(data[0], (int, float)):
+                    leverage = int(data[0])
+            except (json.JSONDecodeError, TypeError):
+                pass
+    return (account_id, risk_profile_id, leverage)
 
 
 async def _get_runtime_config(
@@ -157,6 +183,7 @@ async def _execute_signal(
     current_price: Decimal,
     account_id: int | None,
     risk_profile_id: int | None,
+    leverage: int,
     strategy_id: int | None = None,
     runtime_cfg: StrategyRuntimeConfig | None = None,
 ) -> Trade | None:
@@ -250,7 +277,7 @@ async def _execute_signal(
             order_type=decision.order_type,
             trigger_price=decision.fill_price or signal.entry_price,
             quantity=DEFAULT_QUANTITY,
-            leverage=DEFAULT_LEVERAGE,
+            leverage=leverage,
             take_profit=signal.take_profit,
             stop_loss=signal.stop_loss,
             strategy_family=signal.strategy_family,
@@ -279,7 +306,7 @@ async def _execute_signal(
 
     # MARKET: entrada inmediata al precio actual (con slippage en prepare_n8n_trade)
     payload = _signal_to_n8n_payload(
-        signal, account_id, risk_profile_id, idempotency_key, DEFAULT_QUANTITY, DEFAULT_LEVERAGE,
+        signal, account_id, risk_profile_id, idempotency_key, DEFAULT_QUANTITY, leverage,
         strategy_id=strategy_id,
         entry_price_override=decision.fill_price,
         entry_order_type="MARKET",
@@ -629,7 +656,7 @@ async def run_strategies_for_timeframe(interval: str) -> list[Trade]:
             logger.debug("strategy_engine: not enough candles for %s (%d)", interval, len(candles))
             return opened
 
-        account_id, risk_profile_id = await _get_default_account_and_profile(session)
+        account_id, risk_profile_id, leverage = await _get_default_account_and_profile(session)
 
         for strat in strategies:
             fn = get_strategy_fn(strat.family, strat.name, strat.version)
@@ -638,6 +665,10 @@ async def run_strategies_for_timeframe(interval: str) -> list[Trade]:
             try:
                 cfg = await _get_runtime_config(session, strat, SYMBOL, interval)
                 if cfg is None:
+                    logger.debug(
+                        "strategy_engine: %s/%s no se ejecuta: no existe strategy_runtime_config para symbol=%s timeframe=%s",
+                        strat.family, strat.name, SYMBOL, interval,
+                    )
                     continue
                 if not cfg.active:
                     continue
@@ -687,7 +718,7 @@ async def run_strategies_for_timeframe(interval: str) -> list[Trade]:
                             continue
                     trade = await _execute_signal(
                         exec_session, signal, current_price,
-                        account_id, risk_profile_id,
+                        account_id, risk_profile_id, leverage,
                         strategy_id=strat.id, runtime_cfg=cfg,
                     )
                     if trade:
