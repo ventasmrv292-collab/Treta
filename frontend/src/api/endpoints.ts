@@ -14,6 +14,7 @@ import type {
   PositionSizePreview,
   BotLogEntry,
   SupervisorStatus,
+  MarketRegimeStatus,
 } from '../types'
 
 const API_V1 = `${API_BASE}/api/v1`
@@ -44,6 +45,7 @@ export const endpoints = {
     price: (symbol = 'BTCUSDT') => `/market/price${qs({ symbol })}`,
     klines: (symbol = 'BTCUSDT', interval = '15m', limit = 300, forceBinance = false) =>
       `/market/klines${qs({ symbol, interval, limit, force_binance: forceBinance })}`,
+    regimeStatus: (symbol = 'BTCUSDT', timeframe = '30m') => `/market/regime-status${qs({ symbol, timeframe })}`,
   },
   trades: {
     list: (params: {
@@ -131,6 +133,12 @@ export async function fetchKlines(symbol: string, interval: string, limit = 300,
     throw new Error(msg || 'Failed to fetch klines')
   }
   return res.json() as Promise<KlinesResponse>
+}
+
+export async function fetchMarketRegimeStatus(symbol: string, timeframe: string) {
+  const res = await fetch(`${API_V1}${endpoints.market.regimeStatus(symbol, timeframe)}`)
+  if (!res.ok) throw new Error('Failed to fetch market regime status')
+  return res.json() as Promise<MarketRegimeStatus>
 }
 
 export async function fetchTrades(params: Parameters<typeof endpoints.trades.list>[0]) {

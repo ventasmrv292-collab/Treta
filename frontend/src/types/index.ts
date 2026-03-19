@@ -126,6 +126,37 @@ export interface KlinesResponse {
   candles: CandleData[]
 }
 
+export interface MarketRegimeStatus {
+  symbol: string
+  requested_timeframe: string
+  current_regime: {
+    regime: string
+    reason: string
+    cooldown_active: boolean
+    cooldown_bars_remaining: number
+    raw_regime: string
+    timeframe_used: string
+  }
+  regimes_by_timeframe: Record<string, {
+    regime: string
+    reason: string
+    cooldown_active: boolean
+    cooldown_bars_remaining: number
+    raw_regime: string
+    timeframe_used: string
+  }>
+  strategy_long_permissions: {
+    strategy_family: string
+    strategy_name: string
+    strategy_version: string
+    strategy_timeframe: string
+    regime_timeframe_used: string
+    long_allowed: boolean
+    long_reason: string
+    market_regime: string
+  }[]
+}
+
 export interface ManualTradeCreate {
   source: 'manual'
   symbol: string

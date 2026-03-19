@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { CandlestickChart } from '../components/CandlestickChart'
-import { fetchKlines, fetchPrice, fetchDashboard, fetchPaperAccounts, fetchDashboardSummary, fetchTrades, fetchSupervisorStatus, fetchSchedulerStatus, fetchBotLogs, fetchSignalEvents } from '../api/endpoints'
+import { fetchKlines, fetchPrice, fetchDashboard, fetchPaperAccounts, fetchDashboardSummary, fetchTrades, fetchSupervisorStatus, fetchSchedulerStatus, fetchBotLogs, fetchSignalEvents, fetchMarketRegimeStatus } from '../api/endpoints'
 import { EventExplanationModal } from '../components/EventExplanationModal'
 import { getEventExplanation } from '../constants/eventExplanations'
 import { useI18n } from '../contexts/I18nContext'
 import { WS_BASE } from '../config'
-import type { CandleData, PaperAccount, Trade, SignalEventRow } from '../types'
+import type { CandleData, MarketRegimeStatus, PaperAccount, Trade, SignalEventRow } from '../types'
 import type { StrategyOverlayId } from '../utils/strategyIndicators'
 import { format } from 'date-fns'
 import { TrendingUp, Activity, DollarSign, Percent, Wallet, History, ArrowRight, Bot, FileText } from 'lucide-react'
@@ -63,6 +63,7 @@ export function Dashboard() {
   const [candlesError, setCandlesError] = useState<string | null>(null)
   /** Fuente actual de datos de mercado (binance, bybit, coingecko). */
   const [marketDataSource, setMarketDataSource] = useState<string | null>(null)
+  const [marketRegime, setMarketRegime] = useState<MarketRegimeStatus | null>(null)
 
   // Carga inicial: klines, precio, cuentas paper y dashboard (o summary con cuenta)
   useEffect(() => {
@@ -225,6 +226,15 @@ export function Dashboard() {
     }, DASHBOARD_REFRESH_MS)
     return () => clearInterval(t)
   }, [])
+
+  // Régimen de mercado y permisos LONG por estrategia/timeframe.
+  useEffect(() => {
+    fetchMarketRegimeStatus('BTCUSDT', interval).then(setMarketRegime).catch(() => setMarketRegime(null))
+    const t = setInterval(() => {
+      fetchMarketRegimeStatus('BTCUSDT', interval).then(setMarketRegime).catch(() => {})
+    }, 30_000)
+    return () => clearInterval(t)
+  }, [interval])
 
   // Refresco métricas: si hay cuenta seleccionada, dashboard-summary; si no, dashboard
   useEffect(() => {
@@ -639,6 +649,77 @@ export function Dashboard() {
         </div>
       </div>
 
+      <div className="grid gap-4 lg:grid-cols-2">
+        <div className="rounded-xl border border-white/10 bg-[var(--surface-muted)] p-4">
+          <h3 className="mb-3 text-sm font-semibold text-[var(--text-muted)]">Régimen de mercado actual</h3>
+          {marketRegime?.current_regime ? (
+            <div className="space-y-2 text-sm">
+              <p>
+                <span className="text-[var(--text-muted)]">Régimen: </span>
+                <span className={`rounded px-2 py-0.5 text-xs font-semibold ${
+                  marketRegime.current_regime.regime === 'BULLISH'
+                    ? 'bg-green-500/20 text-green-400'
+                    : marketRegime.current_regime.regime === 'SIDEWAYS'
+                      ? 'bg-blue-500/20 text-blue-400'
+                      : 'bg-red-500/20 text-red-400'
+                }`}>
+                  {marketRegime.current_regime.regime}
+                </span>
+              </p>
+              <p><span className="text-[var(--text-muted)]">Motivo: </span>{marketRegime.current_regime.reason}</p>
+              <p>
+                <span className="text-[var(--text-muted)]">Cooldown: </span>
+                <span className={marketRegime.current_regime.cooldown_active ? 'text-amber-400' : 'text-green-400'}>
+                  {marketRegime.current_regime.cooldown_active
+                    ? `ACTIVO (${marketRegime.current_regime.cooldown_bars_remaining} velas restantes)`
+                    : 'INACTIVO'}
+                </span>
+              </p>
+              <p>
+                <span className="text-[var(--text-muted)]">TF de régimen usado: </span>
+                {marketRegime.current_regime.timeframe_used}
+              </p>
+            </div>
+          ) : (
+            <p className="text-sm text-[var(--text-muted)]">No disponible</p>
+          )}
+        </div>
+        <div className="rounded-xl border border-white/10 bg-[var(--surface-muted)] p-4">
+          <h3 className="mb-3 text-sm font-semibold text-[var(--text-muted)]">Permiso LONG por estrategia/timeframe</h3>
+          <div className="max-h-56 overflow-y-auto">
+            <table className="w-full min-w-[500px] text-xs">
+              <thead>
+                <tr className="border-b border-white/10 text-left text-[var(--text-muted)]">
+                  <th className="p-2 font-medium">Estrategia</th>
+                  <th className="p-2 font-medium">TF</th>
+                  <th className="p-2 font-medium">Régimen</th>
+                  <th className="p-2 font-medium">LONG</th>
+                  <th className="p-2 font-medium">Motivo</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(marketRegime?.strategy_long_permissions ?? []).map((row) => (
+                  <tr key={`${row.strategy_name}-${row.strategy_timeframe}`} className="border-b border-white/5">
+                    <td className="p-2">{row.strategy_name}</td>
+                    <td className="p-2">{row.strategy_timeframe} (reg: {row.regime_timeframe_used})</td>
+                    <td className="p-2">{row.market_regime}</td>
+                    <td className={`p-2 font-semibold ${row.long_allowed ? 'text-green-400' : 'text-red-400'}`}>
+                      {row.long_allowed ? 'PERMITIDO' : 'BLOQUEADO'}
+                    </td>
+                    <td className="p-2 text-[var(--text-muted)]">{row.long_reason}</td>
+                  </tr>
+                ))}
+                {(marketRegime?.strategy_long_permissions ?? []).length === 0 && (
+                  <tr>
+                    <td colSpan={5} className="p-4 text-center text-[var(--text-muted)]">Sin datos</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
       {/* Historial reciente en la parte inferior */}
       <div className="rounded-xl border border-white/10 bg-[var(--surface-muted)] p-4">
         <div className="mb-4 flex items-center justify-between">
@@ -712,12 +793,13 @@ export function Dashboard() {
                 <th className="p-2 font-medium">TF</th>
                 <th className="p-2 font-medium">Estado</th>
                 <th className="p-2 font-medium">Trade</th>
+                <th className="p-2 font-medium">Motivo</th>
               </tr>
             </thead>
             <tbody>
               {recentSignals.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="p-6 text-center text-[var(--text-muted)]">Sin señales recientes</td>
+                  <td colSpan={6} className="p-6 text-center text-[var(--text-muted)]">Sin señales recientes</td>
                 </tr>
               )}
               {recentSignals.map((s) => (
@@ -737,6 +819,7 @@ export function Dashboard() {
                     </span>
                   </td>
                   <td className="p-2">{s.trade_id != null ? `#${s.trade_id}` : '—'}</td>
+                  <td className="p-2 text-xs text-[var(--text-muted)]">{s.decision_reason ?? '—'}</td>
                 </tr>
               ))}
             </tbody>
