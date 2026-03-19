@@ -47,6 +47,12 @@ from app.services.trading_capital import (
     check_tp_within_limits,
 )
 from app.services.pushover_service import send_trade_opened
+from app.services.market_regime import (
+    DEFAULT_MARKET_REGIME_CONFIG,
+    classify_market_regime,
+    evaluate_long_permission,
+    get_reference_timeframe,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -150,6 +156,86 @@ def _signal_to_n8n_payload(
 _RR_TOLERANCE = 1e-6
 # Tolerancia Decimal para expected_net_rr vs min_net_rr_ratio (evitar rechazos por redondeo)
 _NET_RR_TOLERANCE = Decimal("0.0001")
+
+
+async def _load_closed_candles(
+    session: AsyncSession,
+    symbol: str,
+    interval: str,
+    limit: int,
+) -> list[dict]:
+    result = await session.execute(
+        select(Candle)
+        .where(Candle.symbol == symbol, Candle.interval == interval, Candle.is_closed == True)
+        .order_by(Candle.open_time.desc())
+        .limit(limit)
+    )
+    rows = list(result.scalars().all())
+    return [
+        {
+            "symbol": c.symbol,
+            "open_time": c.open_time,
+            "open": c.open,
+            "high": c.high,
+            "low": c.low,
+            "close": c.close,
+            "volume": c.volume,
+        }
+        for c in reversed(rows)
+    ]
+
+
+async def _create_regime_blocked_signal_event(
+    session: AsyncSession,
+    signal: StrategySignal,
+    reason: str,
+    regime_detected: str,
+    regime_timeframe: str,
+    regime_reason: str,
+) -> None:
+    idempotency_key = f"backend|{signal.strategy_family}|{signal.strategy_name}|{signal.timeframe}|{signal.entry_price}|{signal.symbol}"
+    payload = {
+        "position_side": signal.position_side,
+        "entry_price": str(signal.entry_price),
+        "take_profit": str(signal.take_profit) if signal.take_profit else None,
+        "stop_loss": str(signal.stop_loss) if signal.stop_loss else None,
+        "metadata": {
+            **(signal.metadata or {}),
+            "market_regime_detected": regime_detected,
+            "market_regime_reason": regime_reason,
+            "regime_timeframe_used": regime_timeframe,
+        },
+    }
+    signal_event = SignalEvent(
+        source="BACKEND",
+        symbol=signal.symbol,
+        timeframe=signal.timeframe,
+        strategy_family=signal.strategy_family,
+        strategy_name=signal.strategy_name,
+        strategy_version=signal.strategy_version,
+        payload_json=json.dumps(payload, default=str),
+        status="REJECTED",
+        decision_reason=reason,
+        idempotency_key=idempotency_key,
+    )
+    session.add(signal_event)
+    await session.flush()
+    await bot_log_event(
+        session,
+        "WARN",
+        MODULE_STRATEGY,
+        EVENT_SIGNAL_REJECTED,
+        f"Signal rejected (market regime): {reason}",
+        context={
+            "reason": reason,
+            "strategy": signal.strategy_name,
+            "timeframe": signal.timeframe,
+            "market_regime_detected": regime_detected,
+            "regime_timeframe_used": regime_timeframe,
+        },
+        related_signal_event_id=signal_event.id,
+    )
+    await session.commit()
 
 
 def _validate_signal_limits(
@@ -633,28 +719,21 @@ async def run_strategies_for_timeframe(interval: str) -> list[Trade]:
         if not strategies:
             return opened
 
-        candles_result = await session.execute(
-            select(Candle)
-            .where(Candle.symbol == SYMBOL, Candle.interval == interval, Candle.is_closed == True)
-            .order_by(Candle.open_time.desc())
-            .limit(CANDLES_LIMIT)
-        )
-        rows = list(candles_result.scalars().all())
-        candles = [
-            {
-                "symbol": c.symbol,
-                "open_time": c.open_time,
-                "open": c.open,
-                "high": c.high,
-                "low": c.low,
-                "close": c.close,
-                "volume": c.volume,
-            }
-            for c in reversed(rows)
-        ]
+        available_tfs = {interval, "1h", "4h", "30m"}
+        regime_tf = get_reference_timeframe(interval, available_tfs)
+        candles = await _load_closed_candles(session, SYMBOL, interval, CANDLES_LIMIT)
         if len(candles) < 20:
             logger.debug("strategy_engine: not enough candles for %s (%d)", interval, len(candles))
             return opened
+        regime_candles = await _load_closed_candles(session, SYMBOL, regime_tf, CANDLES_LIMIT)
+        if len(regime_candles) < max(DEFAULT_MARKET_REGIME_CONFIG.ema_slow_period, 60):
+            fallback_tf = "1h"
+            regime_tf = fallback_tf
+            regime_candles = await _load_closed_candles(session, SYMBOL, fallback_tf, CANDLES_LIMIT)
+        regime_snapshot = classify_market_regime(
+            candles=regime_candles if regime_candles else candles,
+            timeframe_used=regime_tf if regime_candles else interval,
+        )
 
         account_id, risk_profile_id, leverage = await _get_default_account_and_profile(session)
 
@@ -686,6 +765,23 @@ async def run_strategies_for_timeframe(interval: str) -> list[Trade]:
                     if signal.position_side == "LONG" and not cfg.allow_long:
                         continue
                     if signal.position_side == "SHORT" and not cfg.allow_short:
+                        continue
+                if signal.position_side == "LONG":
+                    long_allowed, long_reason = evaluate_long_permission(
+                        strategy_name=signal.strategy_name,
+                        signal=signal,
+                        regime=regime_snapshot,
+                    )
+                    if not long_allowed:
+                        async with async_session_maker() as reject_session:
+                            await _create_regime_blocked_signal_event(
+                                reject_session,
+                                signal,
+                                long_reason,
+                                regime_snapshot.regime,
+                                regime_snapshot.timeframe_used,
+                                regime_snapshot.reason,
+                            )
                         continue
                 current_price = Decimal(str(candles[-1]["close"]))
                 async with async_session_maker() as exec_session:
