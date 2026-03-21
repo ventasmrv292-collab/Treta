@@ -74,6 +74,15 @@ export interface Trade {
   capital_before_usdt?: string | null
   capital_after_usdt?: string | null
   risk_profile_id?: number | null
+  market_regime_detected?: string | null
+  regime_timeframe_used?: string | null
+  cooldown_active_at_open?: boolean | null
+  market_regime_at_signal?: string | null
+  regime_timeframe_at_signal?: string | null
+  cooldown_active_at_signal?: boolean | null
+  regime_changed_since_pending?: boolean | null
+  entry_source?: string | null
+  pending_order_id?: number | null
 }
 
 export interface TradeListResponse {
@@ -126,6 +135,20 @@ export interface KlinesResponse {
   candles: CandleData[]
 }
 
+export interface StrategyRuntimePermissionRow {
+  strategy_family: string
+  strategy_name: string
+  strategy_version: string
+  strategy_timeframe: string
+  regime_timeframe_used: string
+  long_allowed: boolean
+  long_reason: string
+  short_allowed?: boolean
+  short_reason?: string
+  market_regime: string
+  experiment_tier?: string | null
+}
+
 export interface MarketRegimeStatus {
   symbol: string
   requested_timeframe: string
@@ -145,16 +168,23 @@ export interface MarketRegimeStatus {
     raw_regime: string
     timeframe_used: string
   }>
-  strategy_long_permissions: {
-    strategy_family: string
-    strategy_name: string
-    strategy_version: string
-    strategy_timeframe: string
-    regime_timeframe_used: string
-    long_allowed: boolean
-    long_reason: string
-    market_regime: string
-  }[]
+  strategy_long_permissions: StrategyRuntimePermissionRow[]
+  /** Alias con permisos LONG y SHORT + etiqueta de experimento */
+  strategy_runtime_permissions?: StrategyRuntimePermissionRow[]
+}
+
+export interface TradeDimensionsRow {
+  strategy_name: string
+  strategy_version: string
+  timeframe: string
+  position_side: string
+  market_regime_detected: string
+  order_type_entry: string
+  entry_source: string
+  total_trades: number
+  net_pnl: string
+  gross_pnl: string
+  win_rate: number
 }
 
 export interface ManualTradeCreate {

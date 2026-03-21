@@ -15,6 +15,7 @@ import type {
   BotLogEntry,
   SupervisorStatus,
   MarketRegimeStatus,
+  TradeDimensionsRow,
 } from '../types'
 
 const API_V1 = `${API_BASE}/api/v1`
@@ -81,6 +82,11 @@ export const endpoints = {
       accountId != null ? `/analytics/dashboard-summary${qs({ account_id: accountId })}` : '/analytics/dashboard-summary',
     byStrategy: () => '/analytics/by-strategy',
     byStrategyVersion: () => '/analytics/by-strategy-version',
+    byTradeDimensions: (params?: {
+      market_regime_detected?: string
+      position_side?: string
+      entry_source?: string
+    }) => `/analytics/by-trade-dimensions${qs((params || {}) as Record<string, string | number | boolean | undefined>)}`,
     byLeverage: () => '/analytics/by-leverage',
     equityCurve: (period?: string) => `/analytics/equity-curve${qs({ period: period || 'all' })}`,
     runtimeRecommendations: (days?: number) => `/analytics/runtime-recommendations${qs({ days: days ?? 7 })}`,
@@ -239,6 +245,16 @@ export async function fetchByStrategyVersion(): Promise<StrategyVersionRow[]> {
   const res = await fetch(`${API_V1}${endpoints.analytics.byStrategyVersion()}`)
   if (!res.ok) throw new Error('Failed to fetch by-strategy-version')
   return res.json() as Promise<StrategyVersionRow[]>
+}
+
+export async function fetchByTradeDimensions(params?: {
+  market_regime_detected?: string
+  position_side?: string
+  entry_source?: string
+}): Promise<TradeDimensionsRow[]> {
+  const res = await fetch(`${API_V1}${endpoints.analytics.byTradeDimensions(params)}`)
+  if (!res.ok) throw new Error('Failed to fetch by-trade-dimensions')
+  return res.json() as Promise<TradeDimensionsRow[]>
 }
 
 export async function fetchRuntimeRecommendations(days = 7): Promise<RuntimeRecommendations> {

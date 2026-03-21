@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { CandlestickChart } from '../components/CandlestickChart'
-import { fetchKlines, fetchPrice, fetchDashboard, fetchPaperAccounts, fetchDashboardSummary, fetchTrades, fetchSupervisorStatus, fetchSchedulerStatus, fetchBotLogs, fetchSignalEvents, fetchMarketRegimeStatus } from '../api/endpoints'
+import { fetchKlines, fetchPrice, fetchDashboard, fetchPaperAccounts, fetchDashboardSummary, fetchTrades, fetchSupervisorStatus, fetchSchedulerStatus, fetchBotLogs, fetchSignalEvents, fetchMarketRegimeStatus, fetchByTradeDimensions } from '../api/endpoints'
 import { EventExplanationModal } from '../components/EventExplanationModal'
 import { getEventExplanation } from '../constants/eventExplanations'
 import { useI18n } from '../contexts/I18nContext'
 import { WS_BASE } from '../config'
-import type { CandleData, MarketRegimeStatus, PaperAccount, Trade, SignalEventRow } from '../types'
+import type { CandleData, MarketRegimeStatus, PaperAccount, Trade, SignalEventRow, TradeDimensionsRow } from '../types'
 import type { StrategyOverlayId } from '../utils/strategyIndicators'
 import { format } from 'date-fns'
 import { TrendingUp, Activity, DollarSign, Percent, Wallet, History, ArrowRight, Bot, FileText } from 'lucide-react'
@@ -64,6 +64,8 @@ export function Dashboard() {
   /** Fuente actual de datos de mercado (binance, bybit, coingecko). */
   const [marketDataSource, setMarketDataSource] = useState<string | null>(null)
   const [marketRegime, setMarketRegime] = useState<MarketRegimeStatus | null>(null)
+  const [tradeDims, setTradeDims] = useState<TradeDimensionsRow[]>([])
+  const [regimeDimFilter, setRegimeDimFilter] = useState<string>('')
 
   // Carga inicial: klines, precio, cuentas paper y dashboard (o summary con cuenta)
   useEffect(() => {
@@ -235,6 +237,14 @@ export function Dashboard() {
     }, 30_000)
     return () => clearInterval(t)
   }, [interval])
+
+  useEffect(() => {
+    fetchByTradeDimensions({
+      market_regime_detected: regimeDimFilter.trim() || undefined,
+    })
+      .then(setTradeDims)
+      .catch(() => setTradeDims([]))
+  }, [regimeDimFilter])
 
   // Refresco métricas: si hay cuenta seleccionada, dashboard-summary; si no, dashboard
   useEffect(() => {
@@ -685,38 +695,103 @@ export function Dashboard() {
           )}
         </div>
         <div className="rounded-xl border border-white/10 bg-[var(--surface-muted)] p-4">
-          <h3 className="mb-3 text-sm font-semibold text-[var(--text-muted)]">Permiso LONG por estrategia/timeframe</h3>
-          <div className="max-h-56 overflow-y-auto">
-            <table className="w-full min-w-[500px] text-xs">
+          <h3 className="mb-3 text-sm font-semibold text-[var(--text-muted)]">
+            Experimentos SHORT (v2): permisos por régimen y etiqueta
+          </h3>
+          <div className="max-h-72 overflow-y-auto">
+            <table className="w-full min-w-[720px] text-xs">
               <thead>
                 <tr className="border-b border-white/10 text-left text-[var(--text-muted)]">
                   <th className="p-2 font-medium">Estrategia</th>
+                  <th className="p-2 font-medium">Etiqueta</th>
                   <th className="p-2 font-medium">TF</th>
                   <th className="p-2 font-medium">Régimen</th>
                   <th className="p-2 font-medium">LONG</th>
-                  <th className="p-2 font-medium">Motivo</th>
+                  <th className="p-2 font-medium">SHORT</th>
+                  <th className="p-2 font-medium">Motivo SHORT</th>
                 </tr>
               </thead>
               <tbody>
-                {(marketRegime?.strategy_long_permissions ?? []).map((row) => (
+                {(marketRegime?.strategy_runtime_permissions ?? marketRegime?.strategy_long_permissions ?? []).map((row) => (
                   <tr key={`${row.strategy_name}-${row.strategy_timeframe}`} className="border-b border-white/5">
                     <td className="p-2">{row.strategy_name}</td>
+                    <td className="p-2 text-[var(--text-muted)]">{row.experiment_tier ?? '—'}</td>
                     <td className="p-2">{row.strategy_timeframe} (reg: {row.regime_timeframe_used})</td>
                     <td className="p-2">{row.market_regime}</td>
                     <td className={`p-2 font-semibold ${row.long_allowed ? 'text-green-400' : 'text-red-400'}`}>
-                      {row.long_allowed ? 'PERMITIDO' : 'BLOQUEADO'}
+                      {row.long_allowed ? 'SÍ' : 'NO'}
                     </td>
-                    <td className="p-2 text-[var(--text-muted)]">{row.long_reason}</td>
+                    <td className={`p-2 font-semibold ${row.short_allowed ? 'text-green-400' : 'text-red-400'}`}>
+                      {row.short_allowed === undefined ? '—' : row.short_allowed ? 'SÍ' : 'NO'}
+                    </td>
+                    <td className="p-2 text-[var(--text-muted)]">{row.short_reason ?? row.long_reason}</td>
                   </tr>
                 ))}
-                {(marketRegime?.strategy_long_permissions ?? []).length === 0 && (
+                {(marketRegime?.strategy_runtime_permissions ?? marketRegime?.strategy_long_permissions ?? []).length === 0 && (
                   <tr>
-                    <td colSpan={5} className="p-4 text-center text-[var(--text-muted)]">Sin datos</td>
+                    <td colSpan={7} className="p-4 text-center text-[var(--text-muted)]">Sin datos</td>
                   </tr>
                 )}
               </tbody>
             </table>
           </div>
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-white/10 bg-[var(--surface-muted)] p-4">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <h3 className="text-sm font-semibold text-[var(--text-muted)]">
+            Analíticas por régimen / lado / origen de entrada
+          </h3>
+          <label className="flex items-center gap-2 text-xs text-[var(--text-muted)]">
+            Filtrar régimen (ej. BEARISH):
+            <input
+              type="text"
+              value={regimeDimFilter}
+              onChange={(e) => setRegimeDimFilter(e.target.value)}
+              placeholder="vacío = todos"
+              className="rounded border border-white/10 bg-black/20 px-2 py-1 text-[var(--text)]"
+            />
+          </label>
+        </div>
+        <div className="max-h-64 overflow-y-auto">
+          <table className="w-full min-w-[800px] text-xs">
+            <thead>
+              <tr className="border-b border-white/10 text-left text-[var(--text-muted)]">
+                <th className="p-2 font-medium">Estrategia</th>
+                <th className="p-2 font-medium">TF</th>
+                <th className="p-2 font-medium">L/S</th>
+                <th className="p-2 font-medium">Régimen</th>
+                <th className="p-2 font-medium">Orden entrada</th>
+                <th className="p-2 font-medium">Origen</th>
+                <th className="p-2 font-medium">N</th>
+                <th className="p-2 font-medium">PnL neto</th>
+                <th className="p-2 font-medium">WR%</th>
+              </tr>
+            </thead>
+            <tbody>
+              {tradeDims.map((d, i) => (
+                <tr key={`tdim-${i}-${d.strategy_name}-${d.timeframe}-${d.position_side}-${d.market_regime_detected}-${d.order_type_entry}-${d.entry_source}`} className="border-b border-white/5">
+                  <td className="p-2">{d.strategy_name}</td>
+                  <td className="p-2">{d.timeframe}</td>
+                  <td className="p-2">{d.position_side}</td>
+                  <td className="p-2">{d.market_regime_detected}</td>
+                  <td className="p-2">{d.order_type_entry}</td>
+                  <td className="p-2">{d.entry_source}</td>
+                  <td className="p-2">{d.total_trades}</td>
+                  <td className={`p-2 ${Number(d.net_pnl) >= 0 ? 'text-[var(--positive)]' : 'text-[var(--negative)]'}`}>
+                    ${Number(d.net_pnl).toFixed(2)}
+                  </td>
+                  <td className="p-2">{d.win_rate.toFixed(1)}</td>
+                </tr>
+              ))}
+              {tradeDims.length === 0 && (
+                <tr>
+                  <td colSpan={9} className="p-4 text-center text-[var(--text-muted)]">Sin trades cerrados con estos filtros</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
         </div>
       </div>
 
