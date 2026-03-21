@@ -16,6 +16,7 @@ from app.services.market_regime import (
     DEFAULT_MARKET_REGIME_CONFIG,
     classify_market_regime,
     evaluate_long_permission,
+    evaluate_short_permission,
     get_reference_timeframe,
 )
 
@@ -207,6 +208,21 @@ async def get_regime_status(
             )
         else:
             long_allowed, long_reason = (False, "RUNTIME_CONFIG_BLOCK: allow_long=false")
+        if rtc.allow_short:
+            short_allowed, short_reason = evaluate_short_permission(
+                strategy_name=strat.name,
+                signal=None,
+                regime=snap,
+            )
+        else:
+            short_allowed, short_reason = (False, "RUNTIME_CONFIG_BLOCK: allow_short=false")
+        experiment_tier = None
+        if strat.name == "breakout_volume_v2":
+            experiment_tier = "principal"
+        elif strat.name == "vwap_snapback_v2":
+            experiment_tier = "experimental"
+        elif strat.name == "ema_pullback_v2":
+            experiment_tier = "exploratoria"
         permissions.append(
             {
                 "strategy_family": strat.family,
@@ -216,7 +232,10 @@ async def get_regime_status(
                 "regime_timeframe_used": snap.timeframe_used,
                 "long_allowed": bool(long_allowed),
                 "long_reason": long_reason,
+                "short_allowed": bool(short_allowed),
+                "short_reason": short_reason,
                 "market_regime": snap.regime,
+                "experiment_tier": experiment_tier,
             }
         )
 
@@ -233,4 +252,5 @@ async def get_regime_status(
         },
         "regimes_by_timeframe": snapshots_by_tf,
         "strategy_long_permissions": permissions,
+        "strategy_runtime_permissions": permissions,
     }

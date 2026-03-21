@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import String, Numeric, Integer, DateTime, Text, BigInteger, ForeignKey, func  # BigInteger for signal_event_id
+from sqlalchemy import String, Numeric, Integer, DateTime, Text, BigInteger, ForeignKey, Boolean, func  # BigInteger for signal_event_id
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -47,6 +47,13 @@ class PendingOrder(Base):
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     expires_after_bars: Mapped[int | None] = mapped_column(Integer, nullable=True)
     filled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    market_regime_detected_at_create: Mapped[str | None] = mapped_column(String(48), nullable=True)
+    regime_timeframe_used_at_create: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    cooldown_active_at_create: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    market_regime_detected_at_fill: Mapped[str | None] = mapped_column(String(48), nullable=True)
+    regime_timeframe_used_at_fill: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    cooldown_active_at_fill: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

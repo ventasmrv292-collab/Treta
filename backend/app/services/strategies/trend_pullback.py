@@ -127,7 +127,7 @@ def ema_pullback_v2(candles: list[dict[str, Any]], params: dict[str, Any] | None
             take_profit=Decimal(str(round(last + tp_dist, 2))),
             stop_loss=Decimal(str(round(last - sl_dist, 2))),
             confidence=0.8,
-            metadata={"reason": "ema_pullback_long_v2", "ema": ema},
+            metadata={"reason": "ema_pullback_long_v2", "ema": ema, "experiment_tier": "exploratoria"},
         )
     if downtrend and last <= ema:
         sl_dist_raw = (ema - last) * 0.5
@@ -145,6 +145,6 @@ def ema_pullback_v2(candles: list[dict[str, Any]], params: dict[str, Any] | None
             take_profit=Decimal(str(round(last - tp_dist, 2))),
             stop_loss=Decimal(str(round(last + sl_dist, 2))),
             confidence=0.8,
-            metadata={"reason": "ema_pullback_short_v2", "ema": ema},
+            metadata={"reason": "ema_pullback_short_v2", "ema": ema, "experiment_tier": "exploratoria"},
         )
     return None

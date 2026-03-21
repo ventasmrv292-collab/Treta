@@ -49,8 +49,10 @@ from app.services.trading_capital import (
 from app.services.pushover_service import send_trade_opened
 from app.services.market_regime import (
     DEFAULT_MARKET_REGIME_CONFIG,
+    MarketRegimeSnapshot,
     classify_market_regime,
     evaluate_long_permission,
+    evaluate_short_permission,
     get_reference_timeframe,
 )
 
@@ -95,6 +97,72 @@ async def _get_default_account_and_profile(session: AsyncSession) -> tuple[int |
             except (json.JSONDecodeError, TypeError):
                 pass
     return (account_id, risk_profile_id, leverage)
+
+
+SHORT_EXPERIMENT_STRATEGIES = frozenset({"breakout_volume_v2", "vwap_snapback_v2", "ema_pullback_v2"})
+
+
+async def _resolve_risk_profile_for_signal(
+    session: AsyncSession,
+    signal: StrategySignal,
+    default_risk_profile_id: int | None,
+    default_leverage: int,
+) -> tuple[int | None, int]:
+    """Perfil dedicado SHORT_EXPERIMENT_20X_R075 para señales SHORT de las estrategias v2 del experimento."""
+    if signal.position_side == "SHORT" and signal.strategy_name in SHORT_EXPERIMENT_STRATEGIES:
+        r = await session.execute(
+            select(RiskProfile).where(RiskProfile.name == "SHORT_EXPERIMENT_20X_R075").limit(1)
+        )
+        prof = r.scalar_one_or_none()
+        if prof:
+            lev = default_leverage
+            if prof.allowed_leverage_json:
+                try:
+                    data = json.loads(prof.allowed_leverage_json)
+                    if isinstance(data, list) and len(data) > 0:
+                        lev = int(data[0])
+                except (json.JSONDecodeError, TypeError):
+                    pass
+            return prof.id, lev
+    return default_risk_profile_id, default_leverage
+
+
+def _trade_regime_fields_immediate(snapshot: MarketRegimeSnapshot) -> dict:
+    """Campos de régimen en apertura inmediata (sin pending)."""
+    return {
+        "market_regime_detected": snapshot.regime,
+        "regime_timeframe_used": snapshot.timeframe_used,
+        "cooldown_active_at_open": snapshot.cooldown_active,
+        "market_regime_at_signal": snapshot.regime,
+        "regime_timeframe_at_signal": snapshot.timeframe_used,
+        "cooldown_active_at_signal": snapshot.cooldown_active,
+        "regime_changed_since_pending": False,
+        "entry_source": "IMMEDIATE",
+    }
+
+
+def _trade_regime_fields_from_pending_fill(
+    regime_at_fill: MarketRegimeSnapshot,
+    pending: PendingOrder,
+) -> dict:
+    """Régimen al ejecutar vs al crear la orden pendiente."""
+    sig_reg = pending.market_regime_detected_at_create
+    sig_tf = pending.regime_timeframe_used_at_create
+    sig_cd = pending.cooldown_active_at_create
+    changed: bool | None = None
+    if sig_reg is not None:
+        changed = regime_at_fill.regime != sig_reg
+    return {
+        "market_regime_detected": regime_at_fill.regime,
+        "regime_timeframe_used": regime_at_fill.timeframe_used,
+        "cooldown_active_at_open": regime_at_fill.cooldown_active,
+        "market_regime_at_signal": sig_reg,
+        "regime_timeframe_at_signal": sig_tf,
+        "cooldown_active_at_signal": sig_cd,
+        "regime_changed_since_pending": changed,
+        "entry_source": "PENDING_FILL",
+        "pending_order_id": pending.id,
+    }
 
 
 async def _get_runtime_config(
@@ -238,6 +306,62 @@ async def _create_regime_blocked_signal_event(
     await session.commit()
 
 
+async def _create_ambiguous_bar_event(
+    session: AsyncSession,
+    *,
+    strategy_family: str,
+    strategy_name: str,
+    strategy_version: str,
+    timeframe: str,
+    symbol: str,
+    reason: str,
+    regime_snapshot: MarketRegimeSnapshot,
+) -> None:
+    """Registra rechazo por barra ambigua (p. ej. breakout LONG y SHORT en la misma vela)."""
+    idempotency_key = f"backend|{strategy_family}|{strategy_name}|{timeframe}|AMBIGUOUS|{symbol}"
+    payload = {
+        "position_side": None,
+        "entry_price": None,
+        "take_profit": None,
+        "stop_loss": None,
+        "metadata": {
+            "market_regime_detected": regime_snapshot.regime,
+            "market_regime_reason": regime_snapshot.reason,
+            "regime_timeframe_used": regime_snapshot.timeframe_used,
+            "cooldown_active": regime_snapshot.cooldown_active,
+        },
+    }
+    signal_event = SignalEvent(
+        source="BACKEND",
+        symbol=symbol,
+        timeframe=timeframe,
+        strategy_family=strategy_family,
+        strategy_name=strategy_name,
+        strategy_version=strategy_version,
+        payload_json=json.dumps(payload, default=str),
+        status="REJECTED",
+        decision_reason=reason,
+        idempotency_key=idempotency_key,
+    )
+    session.add(signal_event)
+    await session.flush()
+    await bot_log_event(
+        session,
+        "WARN",
+        MODULE_STRATEGY,
+        EVENT_SIGNAL_REJECTED,
+        f"Signal rejected (ambiguous bar): {reason}",
+        context={
+            "reason": reason,
+            "strategy": strategy_name,
+            "timeframe": timeframe,
+            "market_regime_detected": regime_snapshot.regime,
+        },
+        related_signal_event_id=signal_event.id,
+    )
+    await session.commit()
+
+
 def _validate_signal_limits(
     signal: StrategySignal,
     cfg: StrategyRuntimeConfig,
@@ -272,18 +396,24 @@ async def _execute_signal(
     leverage: int,
     strategy_id: int | None = None,
     runtime_cfg: StrategyRuntimeConfig | None = None,
+    regime_snapshot: MarketRegimeSnapshot | None = None,
 ) -> Trade | None:
     """
     Crea signal_event, clasifica entrada (MARKET/LIMIT/STOP/STALE), y o bien abre trade (MARKET),
     crea orden pendiente (LIMIT/STOP) o marca señal STALE. Retorna trade si se abrió, None en caso contrario.
     """
     idempotency_key = f"backend|{signal.strategy_family}|{signal.strategy_name}|{signal.timeframe}|{signal.entry_price}|{signal.symbol}"
+    meta = dict(signal.metadata or {})
+    if regime_snapshot is not None:
+        meta["market_regime_detected"] = regime_snapshot.regime
+        meta["regime_timeframe_used"] = regime_snapshot.timeframe_used
+        meta["cooldown_active_at_signal"] = regime_snapshot.cooldown_active
     payload_json = json.dumps({
         "position_side": signal.position_side,
         "entry_price": str(signal.entry_price),
         "take_profit": str(signal.take_profit) if signal.take_profit else None,
         "stop_loss": str(signal.stop_loss) if signal.stop_loss else None,
-        "metadata": signal.metadata,
+        "metadata": meta,
     }, default=str)
     signal_event = SignalEvent(
         source="BACKEND",
@@ -352,7 +482,7 @@ async def _execute_signal(
         if runtime_cfg and runtime_cfg.pending_order_expiry_minutes is not None:
             from datetime import timedelta
             expires_at = datetime.now(timezone.utc) + timedelta(minutes=runtime_cfg.pending_order_expiry_minutes)
-        pending = PendingOrder(
+        pending_kw: dict = dict(
             signal_event_id=signal_event.id,
             strategy_id=strategy_id,
             account_id=account_id,
@@ -375,6 +505,11 @@ async def _execute_signal(
             expires_at=expires_at,
             expires_after_bars=runtime_cfg.pending_order_expiry_bars if runtime_cfg else None,
         )
+        if regime_snapshot is not None:
+            pending_kw["market_regime_detected_at_create"] = regime_snapshot.regime
+            pending_kw["regime_timeframe_used_at_create"] = regime_snapshot.timeframe_used
+            pending_kw["cooldown_active_at_create"] = regime_snapshot.cooldown_active
+        pending = PendingOrder(**pending_kw)
         session.add(pending)
         signal_event.status = "PENDING_ORDER"
         signal_event.decision_reason = decision.reason
@@ -500,6 +635,8 @@ async def _execute_signal(
     data_override.pop("slippage_est_usdt", None)
 
     data = n8n_create_to_trade(payload, data_override)
+    if regime_snapshot is not None:
+        data.update(_trade_regime_fields_immediate(regime_snapshot))
     trade = Trade(**data)
     trade.signal_event_id = signal_event.id
     if strategy_id is not None:
@@ -584,7 +721,11 @@ def _pending_order_to_payload(pending: PendingOrder) -> N8nTradeCreate:
     )
 
 
-async def _fill_pending_order(session: AsyncSession, pending: PendingOrder) -> Trade | None:
+async def _fill_pending_order(
+    session: AsyncSession,
+    pending: PendingOrder,
+    regime_at_fill: MarketRegimeSnapshot | None = None,
+) -> Trade | None:
     """Ejecuta el fill de una orden pendiente: crea trade, actualiza orden y signal_event."""
     payload = _pending_order_to_payload(pending)
     try:
@@ -620,6 +761,8 @@ async def _fill_pending_order(session: AsyncSession, pending: PendingOrder) -> T
     data_override.pop("fee_rate", None)
     data_override.pop("slippage_est_usdt", None)
     data = n8n_create_to_trade(payload, data_override)
+    if regime_at_fill is not None:
+        data.update(_trade_regime_fields_from_pending_fill(regime_at_fill, pending))
     trade = Trade(**data)
     trade.signal_event_id = pending.signal_event_id
     trade.strategy_id = pending.strategy_id
@@ -629,6 +772,10 @@ async def _fill_pending_order(session: AsyncSession, pending: PendingOrder) -> T
     pending.status = "FILLED"
     pending.trade_id = trade.id
     pending.filled_at = datetime.now(timezone.utc)
+    if regime_at_fill is not None:
+        pending.market_regime_detected_at_fill = regime_at_fill.regime
+        pending.regime_timeframe_used_at_fill = regime_at_fill.timeframe_used
+        pending.cooldown_active_at_fill = regime_at_fill.cooldown_active
     signal_event = (await session.execute(select(SignalEvent).where(SignalEvent.id == pending.signal_event_id))).scalar_one_or_none()
     if signal_event:
         signal_event.status = "ACCEPTED"
@@ -674,6 +821,7 @@ async def _evaluate_pending_orders(
     timeframe: str,
     bar_high: Decimal,
     bar_low: Decimal,
+    regime_snapshot: MarketRegimeSnapshot | None = None,
 ) -> list[Trade]:
     """Evalúa órdenes PENDING para symbol/timeframe con la vela (high, low); llena las activadas y retorna trades abiertos."""
     from sqlalchemy import and_
@@ -699,7 +847,7 @@ async def _evaluate_pending_orders(
             logger.debug("Pending order %s expired (time)", po.id)
             continue
         if pending_order_triggered(po.order_type, po.trigger_price, po.position_side, bar_high, bar_low):
-            trade = await _fill_pending_order(session, po)
+            trade = await _fill_pending_order(session, po, regime_at_fill=regime_snapshot)
             if trade:
                 opened.append(trade)
     return opened
@@ -758,7 +906,25 @@ async def run_strategies_for_timeframe(interval: str) -> list[Trade]:
                     except Exception:
                         pass
                 params["timeframe"] = interval
-                signal = fn(candles, params)
+                if strat.name == "breakout_volume_v2":
+                    from app.services.strategies.breakout import breakout_volume_v2_eval
+
+                    signal, reject_reason = breakout_volume_v2_eval(candles, params)
+                    if reject_reason:
+                        async with async_session_maker() as amb_session:
+                            await _create_ambiguous_bar_event(
+                                amb_session,
+                                strategy_family=strat.family,
+                                strategy_name=strat.name,
+                                strategy_version=strat.version,
+                                timeframe=interval,
+                                symbol=SYMBOL,
+                                reason=reject_reason,
+                                regime_snapshot=regime_snapshot,
+                            )
+                        continue
+                else:
+                    signal = fn(candles, params)
                 if signal is None:
                     continue
                 if cfg is not None:
@@ -783,6 +949,24 @@ async def run_strategies_for_timeframe(interval: str) -> list[Trade]:
                                 regime_snapshot.reason,
                             )
                         continue
+                elif signal.position_side == "SHORT":
+                    short_allowed, short_reason = evaluate_short_permission(
+                        strategy_name=signal.strategy_name,
+                        signal=signal,
+                        regime=regime_snapshot,
+                    )
+                    if not short_allowed:
+                        async with async_session_maker() as reject_session:
+                            await _create_regime_blocked_signal_event(
+                                reject_session,
+                                signal,
+                                short_reason,
+                                regime_snapshot.regime,
+                                regime_snapshot.timeframe_used,
+                                regime_snapshot.reason,
+                            )
+                        continue
+                rp_id, lev = await _resolve_risk_profile_for_signal(session, signal, risk_profile_id, leverage)
                 current_price = Decimal(str(candles[-1]["close"]))
                 async with async_session_maker() as exec_session:
                     if cfg is not None:
@@ -814,8 +998,9 @@ async def run_strategies_for_timeframe(interval: str) -> list[Trade]:
                             continue
                     trade = await _execute_signal(
                         exec_session, signal, current_price,
-                        account_id, risk_profile_id, leverage,
+                        account_id, rp_id, lev,
                         strategy_id=strat.id, runtime_cfg=cfg,
+                        regime_snapshot=regime_snapshot,
                     )
                     if trade:
                         opened.append(trade)
@@ -826,7 +1011,9 @@ async def run_strategies_for_timeframe(interval: str) -> list[Trade]:
         bar_high = Decimal(str(candles[-1]["high"]))
         bar_low = Decimal(str(candles[-1]["low"]))
         async with async_session_maker() as eval_session:
-            filled = await _evaluate_pending_orders(eval_session, SYMBOL, interval, bar_high, bar_low)
+            filled = await _evaluate_pending_orders(
+                eval_session, SYMBOL, interval, bar_high, bar_low, regime_snapshot=regime_snapshot
+            )
             opened.extend(filled)
             await eval_session.commit()
     return opened

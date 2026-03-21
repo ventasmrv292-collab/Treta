@@ -50,6 +50,17 @@ class Trade(Base):
     strategy_params_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    # Régimen y trazabilidad de entrada (señal / pending / ejecución)
+    market_regime_detected: Mapped[str | None] = mapped_column(String(48), nullable=True, index=True)
+    regime_timeframe_used: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    cooldown_active_at_open: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    market_regime_at_signal: Mapped[str | None] = mapped_column(String(48), nullable=True)
+    regime_timeframe_at_signal: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    cooldown_active_at_signal: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    regime_changed_since_pending: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    entry_source: Mapped[str | None] = mapped_column(String(24), nullable=True, index=True)  # IMMEDIATE | PENDING_FILL
+    pending_order_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+
     # Exit (nullable until closed)
     exit_price: Mapped[Decimal | None] = mapped_column(Numeric(20, 8), nullable=True)
     exit_order_type: Mapped[str | None] = mapped_column(String(16), nullable=True)

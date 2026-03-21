@@ -67,7 +67,7 @@ def vwap_snapback_v1(candles: list[dict[str, Any]], params: dict[str, Any] | Non
 
 
 def vwap_snapback_v2(candles: list[dict[str, Any]], params: dict[str, Any] | None) -> StrategySignal | None:
-    """v2: deviation_pct 0.4, sl_factor 0.6, solo LONG; TP para RR >= min_rr_ratio."""
+    """v2: deviation_pct 0.4, sl_factor 0.6; LONG y SHORT; TP para RR >= min_rr_ratio. SHORT solo 30m/1h en runtime."""
     if not candles or len(candles) < 30:
         return None
     params = params or {}
@@ -85,24 +85,59 @@ def vwap_snapback_v2(candles: list[dict[str, Any]], params: dict[str, Any] | Non
     dev_pct = abs(last - ma) / ma * 100
     if dev_pct < deviation_pct:
         return None
-    if last >= ma:
-        return None
-    sl_dist = (ma - last) * sl_factor
-    tp_dist = sl_dist * min_rr
-    # Entry = nivel por debajo del actual para orden LIMIT (comprar el dip)
-    pullback_pct = float(params.get("limit_pullback_pct", 0.15)) / 100.0
-    entry_level = last * (1 - pullback_pct)
-    entry_level = round(entry_level, 2)
-    return StrategySignal(
-        strategy_family="MEAN_REVERSION",
-        strategy_name="vwap_snapback_v2",
-        strategy_version="2.0.0",
-        symbol=candles[-1].get("symbol", "BTCUSDT"),
-        timeframe=timeframe,
-        position_side="LONG",
-        entry_price=Decimal(str(entry_level)),
-        take_profit=Decimal(str(round(entry_level + tp_dist, 2))),
-        stop_loss=Decimal(str(round(entry_level - sl_dist, 2))),
-        confidence=0.75,
-        metadata={"reason": "snapback_long_v2", "ma": ma, "last": last, "deviation_pct": dev_pct},
-    )
+
+    # LONG: precio por debajo de la media (snapback hacia arriba)
+    if last < ma:
+        sl_dist = (ma - last) * sl_factor
+        tp_dist = sl_dist * min_rr
+        pullback_pct = float(params.get("limit_pullback_pct", 0.15)) / 100.0
+        entry_level = last * (1 - pullback_pct)
+        entry_level = round(entry_level, 2)
+        return StrategySignal(
+            strategy_family="MEAN_REVERSION",
+            strategy_name="vwap_snapback_v2",
+            strategy_version="2.0.0",
+            symbol=candles[-1].get("symbol", "BTCUSDT"),
+            timeframe=timeframe,
+            position_side="LONG",
+            entry_price=Decimal(str(entry_level)),
+            take_profit=Decimal(str(round(entry_level + tp_dist, 2))),
+            stop_loss=Decimal(str(round(entry_level - sl_dist, 2))),
+            confidence=0.75,
+            metadata={
+                "reason": "snapback_long_v2",
+                "experiment_tier": "experimental",
+                "ma": ma,
+                "last": last,
+                "deviation_pct": dev_pct,
+            },
+        )
+
+    # SHORT: precio por encima de la media (snapback hacia abajo) — conservador en motor (HIGH_VOL bloqueado para vwap)
+    if last > ma:
+        sl_dist = (last - ma) * sl_factor
+        tp_dist = sl_dist * min_rr
+        pullback_pct_short = float(params.get("limit_pullback_short_pct", 0.15)) / 100.0
+        entry_level = last * (1 + pullback_pct_short)
+        entry_level = round(entry_level, 2)
+        return StrategySignal(
+            strategy_family="MEAN_REVERSION",
+            strategy_name="vwap_snapback_v2",
+            strategy_version="2.0.0",
+            symbol=candles[-1].get("symbol", "BTCUSDT"),
+            timeframe=timeframe,
+            position_side="SHORT",
+            entry_price=Decimal(str(entry_level)),
+            take_profit=Decimal(str(round(entry_level - tp_dist, 2))),
+            stop_loss=Decimal(str(round(entry_level + sl_dist, 2))),
+            confidence=0.75,
+            metadata={
+                "reason": "snapback_short_v2",
+                "experiment_tier": "experimental",
+                "ma": ma,
+                "last": last,
+                "deviation_pct": dev_pct,
+            },
+        )
+
+    return None

@@ -134,6 +134,15 @@ class TradeResponse(BaseModel):
     updated_at: datetime
     # Estado de la señal asociada (si existe): RECEIVED, ACCEPTED, PENDING_ORDER, STALE, EXPIRED, REJECTED
     signal_event_status: str | None = None
+    market_regime_detected: str | None = None
+    regime_timeframe_used: str | None = None
+    cooldown_active_at_open: bool | None = None
+    market_regime_at_signal: str | None = None
+    regime_timeframe_at_signal: str | None = None
+    cooldown_active_at_signal: bool | None = None
+    regime_changed_since_pending: bool | None = None
+    entry_source: str | None = None
+    pending_order_id: int | None = None
 
 
 class TradeListResponse(BaseModel):

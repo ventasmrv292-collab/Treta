@@ -280,3 +280,32 @@ def evaluate_long_permission(
     if regime.regime in (REGIME_BULLISH, REGIME_SIDEWAYS):
         return True, f"MARKET_REGIME_ALLOW: {regime.regime}"
     return False, f"MARKET_REGIME_BLOCK: {regime.regime}"
+
+
+def evaluate_short_permission(
+    *,
+    strategy_name: str,
+    signal: StrategySignal | None,
+    regime: MarketRegimeSnapshot,
+    cfg: MarketRegimeConfig = DEFAULT_MARKET_REGIME_CONFIG,
+) -> tuple[bool, str]:
+    """
+    Permite SHORT solo en BEARISH o HIGH_VOLATILITY_DOWNTREND (salvo reglas específicas por estrategia).
+    Bloquea SHORT en BULLISH, SIDEWAYS y TRANSITION.
+    vwap_snapback_v2 SHORT: conservador — permitido en BEARISH; bloqueado en HIGH_VOLATILITY_DOWNTREND.
+    """
+    if regime.regime in (REGIME_BULLISH, REGIME_SIDEWAYS, REGIME_TRANSITION):
+        return False, f"MARKET_REGIME_BLOCK: {regime.regime}"
+
+    if regime.regime == REGIME_HIGH_VOL_DOWNTREND:
+        if strategy_name == "vwap_snapback_v2":
+            return (
+                False,
+                "MARKET_REGIME_BLOCK: HIGH_VOLATILITY_DOWNTREND (vwap_snapback_v2 SHORT conservador)",
+            )
+        return True, "MARKET_REGIME_ALLOW: HIGH_VOLATILITY_DOWNTREND"
+
+    if regime.regime == REGIME_BEARISH:
+        return True, "MARKET_REGIME_ALLOW: BEARISH"
+
+    return False, f"MARKET_REGIME_BLOCK: {regime.regime}"

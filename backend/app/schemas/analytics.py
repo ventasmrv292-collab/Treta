@@ -63,3 +63,18 @@ class LeverageComparison(BaseModel):
     net_pnl: Decimal
     win_rate: float
     total_fees: Decimal
+
+
+class TradeDimensionsComparison(BaseModel):
+    """Agregados por estrategia, TF, lado, régimen al abrir, tipo de orden de entrada y origen (inmediato vs pending)."""
+    strategy_name: str
+    strategy_version: str
+    timeframe: str
+    position_side: str
+    market_regime_detected: str
+    order_type_entry: str
+    entry_source: str
+    total_trades: int
+    net_pnl: Decimal
+    gross_pnl: Decimal
+    win_rate: float

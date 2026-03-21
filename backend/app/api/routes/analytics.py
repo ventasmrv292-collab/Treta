@@ -4,13 +4,17 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select, func, and_, case
 from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import datetime, timedelta
-
-from fastapi import Query
 from app.db import get_db
 from app.models.trade import Trade
 from app.services.analytics_service import get_runtime_recommendations
 from app.models.paper_account import PaperAccount
-from app.schemas.analytics import DashboardMetrics, StrategyComparison, StrategyVersionComparison, LeverageComparison
+from app.schemas.analytics import (
+    DashboardMetrics,
+    StrategyComparison,
+    StrategyVersionComparison,
+    LeverageComparison,
+    TradeDimensionsComparison,
+)
 from app.schemas.paper_account import DashboardSummaryResponse, PaperAccountResponse
 
 router = APIRouter()
@@ -419,6 +423,76 @@ async def get_by_strategy_version(db: AsyncSession = Depends(get_db)):
                 expectancy=avg_pnl,
                 payoff_ratio=payoff_ratio,
                 avg_expected_net_rr_at_open=avg_expected_net_rr,
+            )
+        )
+    return out
+
+
+@router.get("/by-trade-dimensions", response_model=list[TradeDimensionsComparison])
+async def get_by_trade_dimensions(
+    db: AsyncSession = Depends(get_db),
+    market_regime_detected: str | None = Query(None, description="Filtrar por régimen al abrir (ej. BEARISH)"),
+    position_side: str | None = Query(None, description="LONG o SHORT"),
+    entry_source: str | None = Query(None, description="IMMEDIATE o PENDING_FILL"),
+):
+    """
+    Comparativa por strategy_name, timeframe, position_side, market_regime_detected,
+    order_type_entry y entry_source (origen de entrada).
+    """
+    closed = and_(Trade.closed_at.isnot(None), Trade.net_pnl_usdt.isnot(None))
+    mrd = func.coalesce(Trade.market_regime_detected, "UNKNOWN")
+    esrc = func.coalesce(Trade.entry_source, "UNKNOWN")
+    q = (
+        select(
+            Trade.strategy_name,
+            Trade.strategy_version,
+            Trade.timeframe,
+            Trade.position_side,
+            mrd.label("mrd"),
+            Trade.order_type_entry,
+            esrc.label("esrc"),
+            func.count(Trade.id).label("total_trades"),
+            func.coalesce(func.sum(Trade.net_pnl_usdt), 0).label("net_pnl"),
+            func.coalesce(func.sum(Trade.gross_pnl_usdt), 0).label("gross_pnl"),
+            func.sum(case([(Trade.net_pnl_usdt > 0, 1)], else_=0)).label("wins"),
+        )
+        .where(closed)
+        .group_by(
+            Trade.strategy_name,
+            Trade.strategy_version,
+            Trade.timeframe,
+            Trade.position_side,
+            mrd,
+            Trade.order_type_entry,
+            esrc,
+        )
+    )
+    if market_regime_detected:
+        q = q.where(Trade.market_regime_detected == market_regime_detected)
+    if position_side:
+        q = q.where(Trade.position_side == position_side.upper())
+    if entry_source:
+        q = q.where(Trade.entry_source == entry_source.upper())
+    result = await db.execute(q)
+    rows = result.all()
+    out: list[TradeDimensionsComparison] = []
+    for r in rows:
+        total = int(r[7] or 0)
+        wins = int(r[10] or 0)
+        win_rate = (wins / total * 100) if total else 0.0
+        out.append(
+            TradeDimensionsComparison(
+                strategy_name=r[0] or "",
+                strategy_version=r[1] or "1.0.0",
+                timeframe=r[2] or "",
+                position_side=r[3] or "",
+                market_regime_detected=str(r[4] or "UNKNOWN"),
+                order_type_entry=r[5] or "",
+                entry_source=str(r[6] or "UNKNOWN"),
+                total_trades=total,
+                net_pnl=_decimal_or_zero(r[8]),
+                gross_pnl=_decimal_or_zero(r[9]),
+                win_rate=round(win_rate, 2),
             )
         )
     return out
